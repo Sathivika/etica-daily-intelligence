@@ -1,20 +1,31 @@
 """
-summarizer.py - Single Gemini call version to avoid free tier rate limits.
+summarizer.py - Uses Groq (free, no billing required) instead of Gemini.
+Model: llama3-70b-8192 — fast, accurate, great for financial summaries.
 """
 
 import os
 import re
 import time
 import logging
-import google.generativeai as genai
+from groq import Groq
 
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_model = genai.GenerativeModel("gemini-1.5-flash-8b")
+client = Groq(api_key=os.environ["GROQ_API_KEY"])
+MODEL = "llama3-70b-8192"
 
-# ── SET TO True TO TEST EMAIL PIPELINE WITHOUT USING GEMINI ──────────────────
-TEST_MODE = True
+# ── SET TO True TO TEST EMAIL PIPELINE WITHOUT USING GROQ API ────────────────
+TEST_MODE = False
+
+
+def _call_groq(prompt: str) -> str:
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=4000,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def _articles_text(articles: list[dict]) -> str:
@@ -25,24 +36,20 @@ def _articles_text(articles: list[dict]) -> str:
 
 
 def summarize_all(all_news: dict[str, list[dict]]) -> dict:
-    """
-    Makes just 2 Gemini API calls total.
-    If TEST_MODE is True, skips Gemini entirely and returns dummy data.
-    """
 
-    # ── TEST MODE: skip Gemini, just test email pipeline ─────────────────
+    # ── TEST MODE ─────────────────────────────────────────────────────────
     if TEST_MODE:
-        logger.info("TEST MODE enabled — skipping Gemini, using dummy data.")
+        logger.info("TEST MODE enabled — skipping Groq, using dummy data.")
         return {
             "executive_summary": """
 <div class="exec-section">
   <h3 class="exec-heading">📌 Today's Key Takeaways</h3>
   <ul class="exec-list">
     <li>This is a TEST RUN of the Etica Daily Intelligence pipeline.</li>
-    <li>Gemini AI was not called — dummy data is being used.</li>
+    <li>Groq AI was not called — dummy data is being used.</li>
     <li>If you received this email, the pipeline is working correctly.</li>
     <li>Email assembly, SMTP delivery, and GitHub Actions are all functional.</li>
-    <li>Set TEST_MODE = False to enable real Gemini summaries.</li>
+    <li>Set TEST_MODE = False to enable real AI summaries.</li>
   </ul>
 </div>
 <div class="exec-section">
@@ -51,9 +58,9 @@ def summarize_all(all_news: dict[str, list[dict]]) -> dict:
 </div>
 """,
             "categories": {
-                cat: """
+                cat: f"""
 <div class="story">
-  <h4 class="story-title">Test Story for """ + cat + """</h4>
+  <h4 class="story-title">Test Story for {cat}</h4>
   <p class="story-summary">This is a placeholder summary for testing purposes. Real news will appear here in production.</p>
   <p class="story-why"><strong>Why it matters:</strong> This confirms the email pipeline is working end-to-end.</p>
   <a class="story-link" href="#">Read article →</a>
@@ -66,77 +73,94 @@ def summarize_all(all_news: dict[str, list[dict]]) -> dict:
     all_categories_text = ""
     for category, articles in all_news.items():
         all_categories_text += f"\n\n=== {category} ===\n"
-        all_categories_text += _articles_text(articles[:10])
+        all_categories_text += _articles_text(articles[:8])
 
-    # CALL 1: Executive Summary
+    # ── CALL 1: Executive Summary ─────────────────────────────────────────
     exec_prompt = f"""You are a chief market strategist for Etica, a wealth management firm in India.
 
 Here are today's top headlines across all categories:
 {all_categories_text}
 
-Generate a concise executive intelligence brief in HTML using EXACTLY this structure:
+Generate a concise executive intelligence brief in HTML using EXACTLY this structure (no markdown, no code fences, only HTML):
 
 <div class="exec-section">
   <h3 class="exec-heading">📌 Today's Key Takeaways</h3>
   <ul class="exec-list">
-    <li>Insight 1</li><li>Insight 2</li><li>Insight 3</li><li>Insight 4</li><li>Insight 5</li>
+    <li>Specific insight 1</li>
+    <li>Specific insight 2</li>
+    <li>Specific insight 3</li>
+    <li>Specific insight 4</li>
+    <li>Specific insight 5</li>
   </ul>
 </div>
 <div class="exec-section">
   <h3 class="exec-heading">🟢 Opportunities</h3>
-  <ul class="exec-list"><li>Opportunity 1</li><li>Opportunity 2</li><li>Opportunity 3</li></ul>
+  <ul class="exec-list">
+    <li>Opportunity 1</li>
+    <li>Opportunity 2</li>
+    <li>Opportunity 3</li>
+  </ul>
 </div>
 <div class="exec-section">
   <h3 class="exec-heading">🔴 Risks to Watch</h3>
-  <ul class="exec-list"><li>Risk 1</li><li>Risk 2</li><li>Risk 3</li></ul>
+  <ul class="exec-list">
+    <li>Risk 1</li>
+    <li>Risk 2</li>
+    <li>Risk 3</li>
+  </ul>
 </div>
 <div class="exec-section">
   <h3 class="exec-heading">📊 Market Outlook</h3>
-  <p class="exec-outlook">2-3 sentence market outlook here.</p>
+  <p class="exec-outlook">2-3 sentence market outlook for Indian investors today.</p>
 </div>
 
-Return ONLY the HTML above. No markdown. No code fences. Be specific."""
+Return ONLY the HTML above. Be specific and data-aware."""
 
-    logger.info("Calling Gemini (1/2): Executive summary...")
-    exec_response = _model.generate_content(exec_prompt)
-    executive_summary = exec_response.text.strip()
+    logger.info("Calling Groq (1/2): Executive summary...")
+    executive_summary = _call_groq(exec_prompt)
 
-    logger.info("Waiting 15s before next Gemini call...")
-    time.sleep(15)
+    time.sleep(3)
 
-    # CALL 2: All Categories
+    # ── CALL 2: All Categories ────────────────────────────────────────────
     categories_prompt = f"""You are a senior financial analyst for Etica, a wealth management firm in India.
 
 Below are news articles grouped by category. For EACH category, pick the 3 most important stories and return HTML.
 
 {all_categories_text}
 
-For each category use EXACTLY this structure:
+For EACH category, use EXACTLY this HTML structure:
 
-<div class="category-stories" data-category="CATEGORY NAME HERE">
+<div class="category-stories" data-category="EXACT CATEGORY NAME">
   <div class="story">
-    <h4 class="story-title">Headline here</h4>
-    <p class="story-summary">2-sentence summary.</p>
-    <p class="story-why"><strong>Why it matters:</strong> 1 sentence.</p>
-    <a class="story-link" href="ACTUAL_ARTICLE_URL">Read article →</a>
+    <h4 class="story-title">Exact headline from the article</h4>
+    <p class="story-summary">2-sentence factual summary of the story.</p>
+    <p class="story-why"><strong>Why it matters:</strong> 1 sentence on relevance to Indian investors.</p>
+    <a class="story-link" href="ACTUAL_URL_FROM_ARTICLE">Read article →</a>
   </div>
+  <div class="story">...</div>
+  <div class="story">...</div>
 </div>
 
-Generate one block for EVERY category. Return ONLY HTML. No markdown. No code fences."""
+Generate one <div class="category-stories"> block for EVERY category.
+Return ONLY HTML. No markdown. No code fences. No extra text."""
 
-    logger.info("Calling Gemini (2/2): All category summaries...")
-    cat_response = _model.generate_content(categories_prompt)
-    categories_html = cat_response.text.strip()
+    logger.info("Calling Groq (2/2): All category summaries...")
+    categories_html = _call_groq(categories_prompt)
 
+    # ── Parse response into per-category dict ────────────────────────────
     categories_dict = {}
     pattern = r'<div class="category-stories" data-category="([^"]+)">(.*?)</div>\s*(?=<div class="category-stories"|$)'
     matches = re.findall(pattern, categories_html, re.DOTALL)
 
     if matches:
         for cat_name, stories_html in matches:
-            categories_dict[cat_name] = stories_html.strip()
+            # Match against known categories (case-insensitive)
+            for known_cat in all_news.keys():
+                if known_cat.lower() in cat_name.lower() or cat_name.lower() in known_cat.lower():
+                    categories_dict[known_cat] = stories_html.strip()
+                    break
     else:
-        logger.warning("Could not parse categories individually, using full response")
+        logger.warning("Could not parse categories, using full response as fallback")
         for category in all_news.keys():
             categories_dict[category] = categories_html
 
@@ -144,7 +168,7 @@ Generate one block for EVERY category. Return ONLY HTML. No markdown. No code fe
         if category not in categories_dict:
             categories_dict[category] = '<p style="color:#888">No stories available for this category today.</p>'
 
-    logger.info("Gemini summarization complete.")
+    logger.info("Groq summarization complete.")
     return {
         "executive_summary": executive_summary,
         "categories": categories_dict
