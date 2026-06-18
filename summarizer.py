@@ -11,7 +11,7 @@ import google.generativeai as genai
 logger = logging.getLogger(__name__)
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_model = genai.GenerativeModel("gemini-2.0-flash")
+_model = genai.GenerativeModel("gemini-1.5-flash-8b")
 
 
 def _articles_text(articles: list[dict]) -> str:
