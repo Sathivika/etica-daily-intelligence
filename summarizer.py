@@ -21,6 +21,18 @@ def _articles_text(articles: list[dict]) -> str:
     return "\n".join(lines)
 
 
+
+# SET TO True ONLY FOR TESTING (skips Gemini, uses dummy data)
+TEST_MODE = False
+
+if TEST_MODE:
+    return {
+        "executive_summary": "<p>TEST MODE - Executive summary placeholder</p>",
+        "categories": {cat: "<div class='story'><h4 class='story-title'>Test Story</h4><p class='story-summary'>This is a test.</p><p class='story-why'><strong>Why it matters:</strong> Testing only.</p></div>" for cat in all_news.keys()}
+    }
+
+
+
 def summarize_all(all_news: dict[str, list[dict]]) -> dict:
     """
     Makes just 2 Gemini API calls total:
