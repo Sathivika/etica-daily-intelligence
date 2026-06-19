@@ -53,6 +53,7 @@ def build_email_html(summarized: dict) -> str:
         template
         .replace("{{DATE}}", date_str)
         .replace("{{YEAR}}", year_str)
+        .replace("{{LOGO_URL}}", "https://raw.githubusercontent.com/Sathivika/etica-daily-intelligence/main/templates/assets/etica_logo.png")
         .replace("{{EXECUTIVE_SUMMARY}}", summarized["executive_summary"])
         .replace("{{CATEGORY_SECTIONS}}", category_sections)
     )
