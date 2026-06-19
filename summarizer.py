@@ -12,7 +12,7 @@ from groq import Groq
 logger = logging.getLogger(__name__)
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "llama3-70b-8192"
+MODEL = "llama-3.3-70b-versatile"
 
 # ── SET TO True TO TEST EMAIL PIPELINE WITHOUT USING GROQ API ────────────────
 TEST_MODE = False
