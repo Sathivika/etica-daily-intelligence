@@ -70,16 +70,24 @@ def summarize_all(all_news: dict[str, list[dict]]) -> dict:
         }
 
     # ── PRODUCTION MODE ───────────────────────────────────────────────────
+    # Short version (titles only, no links) for the executive summary call
+    exec_text = ""
+    for category, articles in all_news.items():
+        exec_text += f"\n\n=== {category} ===\n"
+        titles = [a["title"] for a in articles[:5]]
+        exec_text += "\n".join(f"- {t}" for t in titles)
+
+    # Fuller version (titles + links) for the category story call, fewer articles
     all_categories_text = ""
     for category, articles in all_news.items():
         all_categories_text += f"\n\n=== {category} ===\n"
-        all_categories_text += _articles_text(articles[:8])
+        all_categories_text += _articles_text(articles[:4])
 
     # ── CALL 1: Executive Summary ─────────────────────────────────────────
     exec_prompt = f"""You are a chief market strategist for Etica, a wealth management firm in India.
 
 Here are today's top headlines across all categories:
-{all_categories_text}
+{exec_text}
 
 Generate a concise executive intelligence brief in HTML using EXACTLY this structure (no markdown, no code fences, only HTML):
 
@@ -119,7 +127,7 @@ Return ONLY the HTML above. Be specific and data-aware."""
     logger.info("Calling Groq (1/2): Executive summary...")
     executive_summary = _call_groq(exec_prompt)
 
-    time.sleep(3)
+    time.sleep(20)
 
     # ── CALL 2: All Categories ────────────────────────────────────────────
     categories_prompt = f"""You are a senior financial analyst for Etica, a wealth management firm in India.
