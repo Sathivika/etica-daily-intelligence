@@ -77,12 +77,6 @@ def summarize_all(all_news: dict[str, list[dict]]) -> dict:
         titles = [a["title"] for a in articles[:5]]
         exec_text += "\n".join(f"- {t}" for t in titles)
 
-    # Fuller version (titles + links) for the category story call, fewer articles
-    all_categories_text = ""
-    for category, articles in all_news.items():
-        all_categories_text += f"\n\n=== {category} ===\n"
-        all_categories_text += _articles_text(articles[:4])
-
     # ── CALL 1: Executive Summary ─────────────────────────────────────────
     exec_prompt = f"""You are a chief market strategist for Etica, a wealth management firm in India.
 
@@ -129,12 +123,28 @@ Return ONLY the HTML above. Be specific and data-aware."""
 
     time.sleep(20)
 
-    # ── CALL 2: All Categories ────────────────────────────────────────────
-    categories_prompt = f"""You are a senior financial analyst for Etica, a wealth management firm in India.
+    # ── CALL 2-5: All Categories, split into small batches to stay under TPM limit ──
+    category_names = list(all_news.keys())
+
+    # Split into batches of 2 categories each (4 batches for 7 categories)
+    batch_size = 2
+    batches = [category_names[i:i + batch_size] for i in range(0, len(category_names), batch_size)]
+
+    def _build_categories_text(cats: list[str]) -> str:
+        text = ""
+        for category in cats:
+            articles = all_news[category]
+            text += f"\n\n=== {category} ===\n"
+            text += _articles_text(articles[:3])  # only 3 articles per category now
+        return text
+
+    def _build_categories_prompt(cats: list[str]) -> str:
+        cats_text = _build_categories_text(cats)
+        return f"""You are a senior financial analyst for Etica, a wealth management firm in India.
 
 Below are news articles grouped by category. For EACH category, pick the 3 most important stories and return HTML.
 
-{all_categories_text}
+{cats_text}
 
 For EACH category, use EXACTLY this HTML structure:
 
@@ -149,11 +159,18 @@ For EACH category, use EXACTLY this HTML structure:
   <div class="story">...</div>
 </div>
 
-Generate one <div class="category-stories"> block for EVERY category.
+Generate one <div class="category-stories"> block for EVERY category listed above.
 Return ONLY HTML. No markdown. No code fences. No extra text."""
 
-    logger.info("Calling Groq (2/2): All category summaries...")
-    categories_html = _call_groq(categories_prompt)
+    categories_html_parts = []
+    for idx, batch in enumerate(batches, 1):
+        logger.info(f"Calling Groq ({idx+1}/{len(batches)+1}): Categories batch {idx} ({len(batch)} categories)...")
+        html_part = _call_groq(_build_categories_prompt(batch))
+        categories_html_parts.append(html_part)
+        if idx < len(batches):
+            time.sleep(20)
+
+    categories_html = "\n".join(categories_html_parts)
 
     # ── Parse response into per-category dict ────────────────────────────
     categories_dict = {}
