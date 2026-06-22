@@ -28,18 +28,23 @@
     text-align: center;
     border-bottom: 3px solid #c2127f;
   }
+  .header-brief-label {
+    display: inline-block;
+    font-size: 20px;
+    font-weight: 800;
+    color: #ffffff;
+    background: #c2127f;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 7px 22px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
   .header-logo-img {
-    width: 260px;
+    width: 220px;
     height: auto;
     display: block;
-    margin: 0 auto 12px;
-  }
-  .header-brief-label {
-    font-size: 11px;
-    color: #4a4a4a;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    font-weight: 600;
+    margin: 0 auto 14px;
   }
   .header-date {
     display: inline-block;
@@ -60,12 +65,12 @@
     padding: 28px 40px;
   }
   .exec-block h2 {
-    font-size: 13px;
+    font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: #c2127f;
     margin-bottom: 20px;
-    font-weight: 700;
+    font-weight: 800;
   }
   .exec-section { margin-bottom: 20px; }
   .exec-heading {
@@ -81,6 +86,97 @@
   }
   .exec-list li { margin-bottom: 4px; }
   .exec-outlook { line-height: 1.7; color: #3a3a3a; }
+
+  /* ── Investor Tips (exec + per-category) ── */
+  .investor-tips {
+    background: #fff8e7;
+    border: 1px solid #f5c842;
+    border-left: 4px solid #e6a800;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-top: 16px;
+  }
+  .investor-tips-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: #b37700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .investor-tips ul {
+    padding-left: 18px;
+    line-height: 1.8;
+    color: #4a3800;
+    font-size: 13px;
+  }
+  .investor-tips ul li { margin-bottom: 3px; }
+  .investor-tips p {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #4a3800;
+  }
+
+  /* ── Investor FAQs ── */
+  .faq-block {
+    background: #f0f7ff;
+    border: 1px solid #b3d4f5;
+    border-left: 4px solid #2d7dd2;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-top: 16px;
+  }
+  .faq-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a5fa8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .faq-item { margin-bottom: 10px; }
+  .faq-q {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2b2b2b;
+    margin-bottom: 3px;
+  }
+  .faq-a {
+    font-size: 13px;
+    color: #3a3a3a;
+    line-height: 1.6;
+  }
+
+  /* ── NFO Tracker Table ── */
+  .nfo-table-wrap { margin-top: 16px; overflow-x: auto; }
+  .nfo-table-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: #c2127f;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .nfo-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .nfo-table th {
+    background: #c2127f;
+    color: #ffffff;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .nfo-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0d9ea;
+    color: #3a3a3a;
+    line-height: 1.5;
+  }
+  .nfo-table tr:nth-child(even) td { background: #fdf5fa; }
 
   /* ── Category Sections ── */
   .category-block {
@@ -127,6 +223,12 @@
     line-height: 1.6;
     margin-bottom: 10px;
   }
+  .story-link-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
   .story-link {
     display: inline-block;
     font-size: 12px;
@@ -135,6 +237,11 @@
     text-decoration: none;
     border-bottom: 1px solid #c2127f;
     padding-bottom: 1px;
+  }
+  .story-source {
+    font-size: 11px;
+    color: #888888;
+    font-style: italic;
   }
 
   /* ── Footer ── */
@@ -165,16 +272,16 @@
 
   <!-- HEADER -->
   <div class="header">
+    <div class="header-brief-label">Daily Intelligence Brief</div>
     <img class="header-logo-img"
          src="{{LOGO_URL}}"
          alt="Etica Wealth — Ethics Before Everything" />
-    <div class="header-brief-label">Daily Intelligence Brief</div>
     <div class="header-date">{{DATE}}</div>
   </div>
 
   <!-- EXECUTIVE SUMMARY -->
   <div class="exec-block">
-    <h2>🧠 Executive Summary</h2>
+    <h2>Executive Summary</h2>
     {{EXECUTIVE_SUMMARY}}
   </div>
 

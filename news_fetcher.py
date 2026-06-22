@@ -11,15 +11,14 @@ from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
-# ── Categories & their RSS search queries ────────────────────────────────────
+# ── Categories & their RSS search queries (ordered for email layout) ─────────
 CATEGORIES = {
-    "Indian Stock Market": "Indian stock market Nifty Sensex BSE NSE",
-    "Global Markets":      "global markets S&P500 Dow Jones NASDAQ",
-    "Mutual Funds":        "mutual funds SIP India AMC SEBI",
-    "Economy & Policy":    "RBI monetary policy India economy GDP inflation",
-    "Banking & Finance":   "Indian banking sector HDFC ICICI SBI NPA",
-    "Commodities":         "crude oil gold silver commodity prices India",
-    "Geopolitics & Trade": "geopolitics trade war tariffs India US China",
+    "Indian Stock Market":   "Indian stock market Nifty Sensex BSE NSE index sectors",
+    "Global Markets":        "global markets S&P500 Dow Jones NASDAQ US Fed India impact",
+    "Geopolitics & Trade":   "geopolitics trade war tariffs India US China sanctions",
+    "Mutual Funds":          "mutual funds SIP India AMC SEBI NFO new fund offer",
+    "Commodities & Currency": "crude oil gold silver commodity prices India rupee dollar forex",
+    "Economy & Policy":      "RBI monetary policy India economy GDP inflation budget fiscal",
 }
 
 ARTICLES_PER_CATEGORY = 20
@@ -50,7 +49,8 @@ def _deduplicate(articles: list[dict]) -> list[dict]:
 def fetch_all_news() -> dict[str, list[dict]]:
     """
     Returns a dict:
-      { category_name: [{"title":..., "link":..., "published":...}, ...] }
+      { category_name: [{"title":..., "link":..., "published":..., "source":...}, ...] }
+    Order of keys matches the desired email layout.
     """
     all_news: dict[str, list[dict]] = {}
 
