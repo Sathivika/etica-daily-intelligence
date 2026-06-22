@@ -81,42 +81,115 @@ def fetch_all_news() -> dict[str, list[dict]]:
 
 # ── Market Snapshot ───────────────────────────────────────────────────────────
 
-def fetch_market_snapshot() -> dict:
-    """
-    Fetches live Nifty 50 and Sensex values using yfinance.
-    Returns a dict with price, change, pct_change, and direction for each index.
-    Falls back to dashes if fetch fails.
-    """
-    import yfinance as yf
+def _fallback(label: str) -> dict:
+    return {"label": label, "price": "—", "change": "—", "pct_change": "—", "direction": "neutral"}
 
-    INDICES = {
-        "nifty":  {"ticker": "^NSEI",  "label": "Nifty 50"},
-        "sensex": {"ticker": "^BSESN", "label": "Sensex"},
+
+def _yf_card(label: str, ticker: str, unit: str = "", decimals: int = 2) -> dict:
+    """Fetch a single card from Yahoo Finance via yfinance."""
+    import yfinance as yf
+    info  = yf.Ticker(ticker).fast_info
+    price = info.last_price
+    prev  = info.previous_close
+    chg   = price - prev
+    pct   = (chg / prev) * 100
+    fmt   = f"{{:,.{decimals}f}}"
+    return {
+        "label":      label,
+        "price":      f"{unit}{fmt.format(price)}",
+        "change":     f"{'+' if chg >= 0 else ''}{fmt.format(chg)}",
+        "pct_change": f"{pct:+.2f}%",
+        "direction":  "up" if chg >= 0 else "down",
     }
 
-    snapshot = {}
-    for key, meta in INDICES.items():
-        try:
-            info  = yf.Ticker(meta["ticker"]).fast_info
-            price = info.last_price
-            prev  = info.previous_close
-            chg   = price - prev
-            pct   = (chg / prev) * 100
-            snapshot[key] = {
-                "label":      meta["label"],
-                "price":      f"{price:,.2f}",
-                "change":     f"{chg:+,.2f}",
+
+def _ibja_cards() -> tuple[dict, dict]:
+    """
+    Scrape Gold 999 (₹/10g) and Silver 999 (₹/kg) from ibjarates.com.
+    Returns (gold_card, silver_card). Day-over-day change uses the
+    two most recent dates in the AM rate table on the page.
+    Falls back to dashes on any error.
+    """
+    import re
+    import requests
+    from bs4 import BeautifulSoup
+
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; EticaBot/1.0)"}
+        resp = requests.get("https://ibjarates.com/", headers=headers, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # The historical rate table contains rows like:
+        # | 19/06/2026 | 144941 | 144361 | 132766 | 108706 | 84791 | 230982 | 59214 |
+        # Columns: Date | Gold999 | Gold995 | Gold916 | Gold750 | Gold585 | Silver999 | Platinum999
+        rows = []
+        for tr in soup.find_all("tr"):
+            tds = [td.get_text(strip=True) for td in tr.find_all("td")]
+            # Valid data row: first cell looks like a date DD/MM/YYYY
+            if tds and re.match(r"\d{2}/\d{2}/\d{4}", tds[0]) and len(tds) >= 7:
+                rows.append(tds)
+
+        if len(rows) < 2:
+            logger.warning("IBJA: Not enough rows to compute day-over-day change.")
+            return _fallback("Gold 999 (₹/10g)"), _fallback("Silver 999 (₹/kg)")
+
+        # rows[0] = today/latest, rows[1] = previous trading day
+        def parse(val: str) -> float:
+            return float(val.replace(",", "").strip())
+
+        gold_today  = parse(rows[0][1])   # Gold 999
+        gold_prev   = parse(rows[1][1])
+        silver_today = parse(rows[0][6])  # Silver 999
+        silver_prev  = parse(rows[1][6])
+
+        def _card(label: str, today: float, prev: float, unit: str = "₹") -> dict:
+            chg = today - prev
+            pct = (chg / prev) * 100
+            return {
+                "label":      label,
+                "price":      f"{unit}{today:,.0f}",
+                "change":     f"{'+' if chg >= 0 else ''}{chg:,.0f}",
                 "pct_change": f"{pct:+.2f}%",
                 "direction":  "up" if chg >= 0 else "down",
             }
+
+        gold_card   = _card("Gold 999 (₹/10g)",  gold_today,   gold_prev)
+        silver_card = _card("Silver 999 (₹/kg)", silver_today, silver_prev)
+        logger.info(f"IBJA: Gold={gold_today}, Silver={silver_today}")
+        return gold_card, silver_card
+
+    except Exception as e:
+        logger.warning(f"IBJA scrape failed: {e}")
+        return _fallback("Gold 999 (₹/10g)"), _fallback("Silver 999 (₹/kg)")
+
+
+def fetch_market_snapshot() -> dict:
+    """
+    Fetches all 6 market snapshot cards:
+      - Nifty 50, Sensex, USD/INR, Crude Oil → yfinance (Yahoo Finance)
+      - Gold 999, Silver 999               → ibjarates.com (IBJA, official Indian benchmark)
+    Falls back to dashes on any individual failure.
+    """
+    import yfinance as yf  # noqa: F401 — imported here so module-level import isn't required
+
+    snapshot = {}
+
+    # ── yfinance cards ────────────────────────────────────────────────────
+    YF_CARDS = {
+        "nifty":  ("Nifty 50",        "^NSEI",    "",  2),
+        "sensex": ("Sensex",          "^BSESN",   "",  2),
+        "usdinr": ("USD/INR",         "USDINR=X", "₹", 4),
+        "crude":  ("Crude Oil (WTI)", "CL=F",     "$", 2),
+    }
+    for key, (label, ticker, unit, decimals) in YF_CARDS.items():
+        try:
+            snapshot[key] = _yf_card(label, ticker, unit, decimals)
         except Exception as e:
-            logger.warning(f"Could not fetch {meta['label']}: {e}")
-            snapshot[key] = {
-                "label":      meta["label"],
-                "price":      "—",
-                "change":     "—",
-                "pct_change": "—",
-                "direction":  "neutral",
-            }
+            logger.warning(f"yfinance failed for {label}: {e}")
+            snapshot[key] = _fallback(label)
+
+    # ── IBJA cards ────────────────────────────────────────────────────────
+    snapshot["gold"], snapshot["silver"] = _ibja_cards()
 
     return snapshot

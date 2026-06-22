@@ -26,30 +26,35 @@ def _load_template() -> str:
 
 
 def _build_market_snapshot_html(snapshot: dict) -> str:
-    """Builds the two Nifty/Sensex cards from the snapshot dict."""
+    """Builds market snapshot cards — Nifty & Sensex on row 1, commodities/currency on row 2."""
 
     def _card(data: dict) -> str:
-        color     = "#16a34a" if data["direction"] == "up" else ("#dc2626" if data["direction"] == "down" else "#888888")
-        arrow     = "▲" if data["direction"] == "up" else ("▼" if data["direction"] == "down" else "—")
-        bg        = "#f0fdf4" if data["direction"] == "up" else ("#fef2f2" if data["direction"] == "down" else "#f9f9f9")
-        border    = "#86efac" if data["direction"] == "up" else ("#fca5a5" if data["direction"] == "down" else "#e0e0e0")
-
-        return f"""
-    <div class="snapshot-card" style="background:{bg}; border:1px solid {border};">
+        color  = "#16a34a" if data["direction"] == "up" else ("#dc2626" if data["direction"] == "down" else "#888888")
+        arrow  = "▲" if data["direction"] == "up" else ("▼" if data["direction"] == "down" else "—")
+        bg     = "#f0fdf4" if data["direction"] == "up" else ("#fef2f2" if data["direction"] == "down" else "#f9f9f9")
+        border = "#86efac" if data["direction"] == "up" else ("#fca5a5" if data["direction"] == "down" else "#e0e0e0")
+        return f"""<div class="snapshot-card" style="background:{bg}; border:1px solid {border};">
       <div class="snapshot-label">{data['label']}</div>
       <div class="snapshot-price">{data['price']}</div>
-      <div class="snapshot-change" style="color:{color};">
-        {arrow} {data['change']} &nbsp;({data['pct_change']})
-      </div>
+      <div class="snapshot-change" style="color:{color};">{arrow} {data['change']} &nbsp;({data['pct_change']})</div>
     </div>"""
 
-    cards = _card(snapshot["nifty"]) + _card(snapshot["sensex"])
+    row1 = _card(snapshot["nifty"]) + "\n    " + _card(snapshot["sensex"])
+    row2 = (
+        _card(snapshot["usdinr"]) + "\n    " +
+        _card(snapshot["gold"])   + "\n    " +
+        _card(snapshot["silver"]) + "\n    " +
+        _card(snapshot["crude"])
+    )
 
     return f"""
 <div class="market-snapshot">
   <div class="snapshot-heading">📈 Market Snapshot</div>
-  <div class="snapshot-cards">
-    {cards}
+  <div class="snapshot-cards snapshot-row1">
+    {row1}
+  </div>
+  <div class="snapshot-cards snapshot-row2">
+    {row2}
   </div>
   <div class="snapshot-note">Live prices as of email delivery · Source: Yahoo Finance</div>
 </div>"""
