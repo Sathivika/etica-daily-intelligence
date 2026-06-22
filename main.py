@@ -15,7 +15,7 @@ import logging
 import sys
 import traceback
 
-from news_fetcher import fetch_all_news
+from news_fetcher import fetch_all_news, fetch_market_snapshot
 from summarizer   import summarize_all
 from email_sender import build_email_html, send_email, send_failure_notification
 
@@ -43,7 +43,8 @@ def main():
 
     # ── Step 3: Build HTML ────────────────────────────────────
     logger.info("[3/4] Assembling HTML email...")
-    html = build_email_html(summarized)
+    snapshot = fetch_market_snapshot()
+    html = build_email_html(summarized, snapshot)
 
     # ── Step 4: Send Email ────────────────────────────────────
     logger.info("[4/4] Sending email...")

@@ -244,6 +244,55 @@
     font-style: italic;
   }
 
+  /* ── Market Snapshot ── */
+  .market-snapshot {
+    padding: 22px 40px 18px;
+    background: #ffffff;
+    border-bottom: 1px solid #f0e4ec;
+  }
+  .snapshot-heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #2b2b2b;
+    margin-bottom: 14px;
+  }
+  .snapshot-cards {
+    display: flex;
+    gap: 16px;
+  }
+  .snapshot-card {
+    flex: 1;
+    border-radius: 8px;
+    padding: 14px 18px;
+  }
+  .snapshot-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #666666;
+    margin-bottom: 6px;
+  }
+  .snapshot-price {
+    font-size: 22px;
+    font-weight: 800;
+    color: #2b2b2b;
+    margin-bottom: 4px;
+    letter-spacing: -0.5px;
+  }
+  .snapshot-change {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .snapshot-note {
+    font-size: 10px;
+    color: #aaaaaa;
+    margin-top: 10px;
+    letter-spacing: 0.3px;
+  }
+
   /* ── Footer ── */
   .footer {
     background: #1c1c1c;
@@ -278,6 +327,9 @@
          alt="Etica Wealth — Ethics Before Everything" />
     <div class="header-date">{{DATE}}</div>
   </div>
+
+  <!-- MARKET SNAPSHOT -->
+  {{MARKET_SNAPSHOT}}
 
   <!-- EXECUTIVE SUMMARY -->
   <div class="exec-block">

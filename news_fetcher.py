@@ -77,3 +77,46 @@ def fetch_all_news() -> dict[str, list[dict]]:
     total = sum(len(v) for v in all_news.values())
     logger.info(f"Total unique articles: {total}")
     return all_news
+
+
+# ── Market Snapshot ───────────────────────────────────────────────────────────
+
+def fetch_market_snapshot() -> dict:
+    """
+    Fetches live Nifty 50 and Sensex values using yfinance.
+    Returns a dict with price, change, pct_change, and direction for each index.
+    Falls back to dashes if fetch fails.
+    """
+    import yfinance as yf
+
+    INDICES = {
+        "nifty":  {"ticker": "^NSEI",  "label": "Nifty 50"},
+        "sensex": {"ticker": "^BSESN", "label": "Sensex"},
+    }
+
+    snapshot = {}
+    for key, meta in INDICES.items():
+        try:
+            info  = yf.Ticker(meta["ticker"]).fast_info
+            price = info.last_price
+            prev  = info.previous_close
+            chg   = price - prev
+            pct   = (chg / prev) * 100
+            snapshot[key] = {
+                "label":      meta["label"],
+                "price":      f"{price:,.2f}",
+                "change":     f"{chg:+,.2f}",
+                "pct_change": f"{pct:+.2f}%",
+                "direction":  "up" if chg >= 0 else "down",
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch {meta['label']}: {e}")
+            snapshot[key] = {
+                "label":      meta["label"],
+                "price":      "—",
+                "change":     "—",
+                "pct_change": "—",
+                "direction":  "neutral",
+            }
+
+    return snapshot
