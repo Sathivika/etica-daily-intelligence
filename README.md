@@ -1,13 +1,13 @@
 # Etica Daily Intelligence Brief
 
-Automated morning news briefing — fetches, filters, and summarizes financial news via Gemini AI, then emails a professional HTML report to the team every day at 6:00 AM IST.
+Automated morning news briefing — fetches, filters, and summarizes financial news via Gemini AI, then emails a professional HTML report to the team every day at 8:00 AM IST.
 
 ---
 
 ## How It Works
 
 ```
-6:00 AM IST → GitHub Actions triggers
+8:00 AM IST → GitHub Actions triggers
 → Fetch ~140 articles (20 × 7 categories) from Google News RSS
 → Deduplicate similar headlines
 → Gemini picks top 5 stories per category + writes executive summary
