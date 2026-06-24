@@ -86,33 +86,83 @@ def _build_category_sections(categories: dict[str, str]) -> str:
     return "\n".join(sections)
 
 
-def _build_mint_section(mint_articles: list[dict]) -> str:
-    """Builds the General News from Mint section with article cards and Explore More button."""
-    if not mint_articles:
-        return ""
+def _summarize_general_news(articles: list[dict]) -> str:
+    """
+    Calls Groq to generate story cards for General News with the same
+    HTML structure (summary + why it matters) as all other categories.
+    Falls back to title-only cards on failure.
+    """
+    import os
+    from groq import Groq
 
-    cards = ""
-    for a in mint_articles:
-        cards += f"""
+    try:
+        client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        articles_text = "\n".join(
+            f"{i+1}. {a['title']}  [{a['source']}]  {a['link']}"
+            for i, a in enumerate(articles)
+        )
+        prompt = f"""You are a senior analyst for Etica, a wealth management firm in India.
+
+Here are today's top general news headlines:
+{articles_text}
+
+For EACH article, return a story card using EXACTLY this HTML structure:
+
+<div class="story">
+  <h4 class="story-title">Exact headline</h4>
+  <p class="story-summary">2-sentence factual summary. Do NOT repeat the headline key words in the first sentence.</p>
+  <p class="story-why"><strong>Why it matters:</strong> 1 sentence on why this is relevant to an Indian reader or investor.</p>
+  <div class="story-link-row">
+    <a class="story-link" href="ACTUAL_URL">Read article →</a>
+    <span class="story-source">Source name</span>
+  </div>
+</div>
+
+Rules:
+- Return ONLY the story div blocks. No wrapper divs, no markdown, no code fences.
+- story-source must match the source name from the article list."""
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1500,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.warning(f"Groq summarization for General News failed: {e}. Falling back to title-only cards.")
+        fallback = ""
+        for a in articles:
+            fallback += f"""
   <div class="story">
     <h4 class="story-title">{a['title']}</h4>
     <div class="story-link-row">
       <a class="story-link" href="{a['link']}">Read article →</a>
-      <span class="story-source">Mint</span>
+      <span class="story-source">{a['source']}</span>
     </div>
   </div>"""
+        return fallback
+
+
+def _build_mint_section(mint_articles: list[dict]) -> str:
+    """Builds the General News section — summarized by Groq to match all other category cards."""
+    if not mint_articles:
+        return ""
+
+    cards = _summarize_general_news(mint_articles)
 
     return f"""
 <div class="category-block">
   <div class="category-label">General News</div>
   {cards}
   <div style="text-align:center;margin-top:20px;">
-    <a href="https://www.livemint.com/" class="explore-btn"
+    <a href="https://news.google.com/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pKVGlnQVAB?hl=en-IN&gl=IN&ceid=IN%3Aen"
        style="display:inline-block;background:#c2127f;color:#ffffff;font-size:13px;font-weight:700;
               padding:10px 28px;border-radius:24px;text-decoration:none;letter-spacing:0.5px;">
       Explore More →
     </a>
-    <div style="font-size:10px;color:#aaaaaa;margin-top:8px;">Top stories from Mint</div>
+    <div style="font-size:10px;color:#aaaaaa;margin-top:8px;">Top stories from Indian news sources</div>
   </div>
 </div>"""
 
