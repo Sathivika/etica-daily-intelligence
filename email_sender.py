@@ -14,10 +14,19 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ── Recipients ────────────────────────────────────────────────────────────────
-RECIPIENTS = [
-    os.environ.get("RECIPIENT_1", ""),
-    os.environ.get("RECIPIENT_2", ""),
-]
+def _load_recipients() -> list[str]:
+    """Auto-scan RECIPIENT_1, RECIPIENT_2, ... RECIPIENT_N from environment."""
+    recipients = []
+    i = 1
+    while True:
+        val = os.environ.get(f"RECIPIENT_{i}", "").strip()
+        if not val:
+            break
+        recipients.append(val)
+        i += 1
+    return recipients
+
+RECIPIENTS = _load_recipients()
 
 
 def _load_template() -> str:
@@ -138,7 +147,7 @@ def send_email(html_content: str) -> None:
     today   = datetime.now().strftime("%d %b %Y")
     subject = f"Etica Daily Intelligence Brief · {today}"
 
-    recipients = [r for r in RECIPIENTS if r]
+    recipients = _load_recipients()
     if not recipients:
         logger.warning("No recipients configured. Set RECIPIENT_1, RECIPIENT_2, etc. in GitHub Secrets.")
         return
@@ -163,7 +172,7 @@ def send_failure_notification(error: str) -> None:
         if not sender_email or not sender_password:
             return
 
-        recipients = [r for r in RECIPIENTS if r]
+        recipients = _load_recipients()
         if not recipients:
             return
 

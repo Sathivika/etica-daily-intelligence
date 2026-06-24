@@ -204,24 +204,36 @@ def fetch_market_snapshot() -> dict:
 
 def fetch_mint_news(max_articles: int = 4) -> list[dict]:
     """
-    Fetches top general news from Mint via their RSS feed.
+    Fetches top general news from multiple Indian news sources via RSS.
     Returns list of {"title", "link", "source", "published"}.
-    Falls back to empty list on failure.
+    Falls back gracefully on individual source failure.
     """
-    MINT_RSS = "https://www.livemint.com/rss/news"
-    try:
-        feed = feedparser.parse(MINT_RSS)
-        articles = []
-        for entry in feed.entries[:max_articles * 3]:  # fetch extra, dedup, then trim
-            articles.append({
-                "title":     entry.get("title", "No Title"),
-                "link":      entry.get("link", "https://www.livemint.com/"),
-                "published": entry.get("published", ""),
-                "source":    "Mint",
-            })
-        articles = _deduplicate(articles)[:max_articles]
-        logger.info(f"Mint: fetched {len(articles)} articles")
-        return articles
-    except Exception as e:
-        logger.warning(f"Mint RSS fetch failed: {e}")
-        return []
+    SOURCES = [
+        ("https://www.livemint.com/rss/news",                             "Mint"),
+        ("https://economictimes.indiatimes.com/rssfeedsdefault.cms",      "Economic Times"),
+        ("https://www.thehindu.com/news/national/feeder/default.rss",     "The Hindu"),
+        ("https://feeds.feedburner.com/ndtvnews-top-stories",             "NDTV"),
+    ]
+
+    all_articles = []
+    for url, source_name in SOURCES:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:max_articles * 2]:
+                title = entry.get("title", "No Title")
+                # Skip quote-of-the-day / sponsored / ad-style entries
+                skip_keywords = ["quote of the day", "horoscope", "astrology", "recipe", "sponsored"]
+                if any(kw in title.lower() for kw in skip_keywords):
+                    continue
+                all_articles.append({
+                    "title":     title,
+                    "link":      entry.get("link", f"https://www.livemint.com/"),
+                    "published": entry.get("published", ""),
+                    "source":    source_name,
+                })
+        except Exception as e:
+            logger.warning(f"RSS fetch failed for {source_name}: {e}")
+
+    all_articles = _deduplicate(all_articles)[:max_articles]
+    logger.info(f"General News: fetched {len(all_articles)} articles from multiple sources")
+    return all_articles

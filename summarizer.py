@@ -364,8 +364,48 @@ Rules:
 
     # ── Parse response into per-category dict ────────────────────────────
     categories_dict = {}
-    pattern = r'<div class="category-stories" data-category="([^"]+)">(.*?)</div>\s*(?=<div class="category-stories"|$)'
-    matches = re.findall(pattern, categories_html, re.DOTALL)
+
+    def _extract_category_blocks(html: str) -> list[tuple[str, str]]:
+        """
+        Extracts (category_name, inner_html) pairs from the LLM output.
+        Handles nested divs correctly by counting open/close tags.
+        """
+        results = []
+        search_from = 0
+        open_tag = '<div class="category-stories" data-category="'
+        while True:
+            start = html.find(open_tag, search_from)
+            if start == -1:
+                break
+            # Extract category name
+            name_start = start + len(open_tag)
+            name_end = html.find('"', name_start)
+            cat_name = html[name_start:name_end]
+
+            # Find the matching closing </div> by counting nesting depth
+            pos = html.find('>', name_end) + 1  # skip past opening tag's >
+            depth = 1
+            while pos < len(html) and depth > 0:
+                open_pos  = html.find('<div', pos)
+                close_pos = html.find('</div>', pos)
+                if close_pos == -1:
+                    break
+                if open_pos != -1 and open_pos < close_pos:
+                    depth += 1
+                    pos = open_pos + 4
+                else:
+                    depth -= 1
+                    if depth == 0:
+                        inner_html = html[html.find('>', name_end) + 1 : close_pos].strip()
+                        results.append((cat_name, inner_html))
+                        search_from = close_pos + 6  # len("</div>") == 6
+                        break
+                    pos = close_pos + 6
+            else:
+                search_from = name_end
+        return results
+
+    matches = _extract_category_blocks(categories_html)
 
     if matches:
         for cat_name, stories_html in matches:
