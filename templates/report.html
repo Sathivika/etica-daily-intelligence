@@ -246,7 +246,7 @@
 
   /* ── Market Snapshot ── */
   .market-snapshot {
-    padding: 22px 40px 18px;
+    padding: 22px 24px 18px;
     background: #ffffff;
     border-bottom: 1px solid #f0e4ec;
   }
@@ -258,40 +258,43 @@
     color: #2b2b2b;
     margin-bottom: 14px;
   }
-  .snapshot-cards {
-    display: flex;
-    gap: 28px;
-    margin-bottom: 12px;
+  .snapshot-grid {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 10px;
+    margin-bottom: 4px;
   }
-  .snapshot-row1 .snapshot-card { flex: 1; }
-  .snapshot-row2 .snapshot-card { flex: 1; }
   .snapshot-card {
     border-radius: 8px;
-    padding: 14px 18px;
+    padding: 12px 14px;
+    vertical-align: top;
+    width: 33.33%;
   }
   .snapshot-label {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     color: #666666;
-    margin-bottom: 6px;
+    margin-bottom: 5px;
   }
   .snapshot-price {
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 800;
     color: #2b2b2b;
-    margin-bottom: 4px;
-    letter-spacing: -0.5px;
+    margin-bottom: 3px;
+    letter-spacing: -0.3px;
+    word-break: break-all;
   }
   .snapshot-change {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
   }
   .snapshot-note {
     font-size: 10px;
     color: #aaaaaa;
-    margin-top: 4px;
+    margin-top: 2px;
+    padding-left: 10px;
     letter-spacing: 0.3px;
   }
 
