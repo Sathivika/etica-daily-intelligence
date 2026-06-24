@@ -15,7 +15,7 @@ import logging
 import sys
 import traceback
 
-from news_fetcher import fetch_all_news, fetch_market_snapshot
+from news_fetcher import fetch_all_news, fetch_market_snapshot, fetch_mint_news
 from summarizer   import summarize_all
 from email_sender import build_email_html, send_email, send_failure_notification
 

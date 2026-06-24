@@ -13,12 +13,13 @@ logger = logging.getLogger(__name__)
 
 # ── Categories & their RSS search queries (ordered for email layout) ─────────
 CATEGORIES = {
-    "Indian Stock Market":   "Indian stock market Nifty Sensex BSE NSE index sectors",
-    "Global Markets":        "global markets S&P500 Dow Jones NASDAQ US Fed India impact",
-    "Geopolitics & Trade":   "geopolitics trade war tariffs India US China sanctions",
-    "Mutual Funds":          "mutual funds SIP India AMC SEBI NFO new fund offer",
-    "Commodities & Currency": "crude oil gold silver commodity prices India rupee dollar forex",
-    "Economy & Policy":      "RBI monetary policy India economy GDP inflation budget fiscal",
+    "Indian Stock Market":      "Indian stock market Nifty Sensex BSE NSE index sectors",
+    "Global Markets":           "global markets S&P500 Dow Jones NASDAQ US Fed India impact",
+    "Geopolitics & Trade":      "geopolitics trade war tariffs India US China sanctions",
+    "Mutual Funds":             "mutual funds SIP India AMC SEBI NFO new fund offer",
+    "Commodities & Currency":   "crude oil gold silver commodity prices India rupee dollar forex",
+    "Economy & Policy":         "RBI monetary policy India economy GDP inflation budget fiscal",
+    "Health & Term Insurance":  "health insurance term insurance IRDAI India life cover premium claim",
 }
 
 ARTICLES_PER_CATEGORY = 20
@@ -166,21 +167,25 @@ def _ibja_cards() -> tuple[dict, dict]:
 
 def fetch_market_snapshot() -> dict:
     """
-    Fetches all 6 market snapshot cards:
-      - Nifty 50, Sensex, USD/INR, Crude Oil → yfinance (Yahoo Finance)
-      - Gold 999, Silver 999               → ibjarates.com (IBJA, official Indian benchmark)
+    Fetches all 10 market snapshot cards:
+      - Nifty 50, Sensex, USD/INR, Crude Oil, S&P 500, NASDAQ, Nikkei 225, Hang Seng → yfinance
+      - Gold 999, Silver 999 → ibjarates.com (IBJA, official Indian benchmark)
     Falls back to dashes on any individual failure.
     """
-    import yfinance as yf  # noqa: F401 — imported here so module-level import isn't required
+    import yfinance as yf  # noqa: F401
 
     snapshot = {}
 
     # ── yfinance cards ────────────────────────────────────────────────────
     YF_CARDS = {
-        "nifty":  ("Nifty 50",        "^NSEI",    "",  2),
-        "sensex": ("Sensex",          "^BSESN",   "",  2),
-        "usdinr": ("USD/INR",         "USDINR=X", "₹", 4),
-        "crude":  ("Crude Oil (WTI)", "CL=F",     "$", 2),
+        "nifty":   ("Nifty 50",         "^NSEI",    "",  2),
+        "sensex":  ("Sensex",           "^BSESN",   "",  2),
+        "usdinr":  ("USD/INR",          "USDINR=X", "₹", 4),
+        "crude":   ("Crude Oil (WTI)",  "CL=F",     "$", 2),
+        "sp500":   ("S&P 500",          "^GSPC",    "",  2),
+        "nasdaq":  ("NASDAQ",           "^IXIC",    "",  2),
+        "nikkei":  ("Nikkei 225",       "^N225",    "¥", 0),
+        "hangseng":("Hang Seng",        "^HSI",     "",  2),
     }
     for key, (label, ticker, unit, decimals) in YF_CARDS.items():
         try:
@@ -193,3 +198,30 @@ def fetch_market_snapshot() -> dict:
     snapshot["gold"], snapshot["silver"] = _ibja_cards()
 
     return snapshot
+
+
+# ── Mint General News ─────────────────────────────────────────────────────────
+
+def fetch_mint_news(max_articles: int = 4) -> list[dict]:
+    """
+    Fetches top general news from Mint via their RSS feed.
+    Returns list of {"title", "link", "source", "published"}.
+    Falls back to empty list on failure.
+    """
+    MINT_RSS = "https://www.livemint.com/rss/news"
+    try:
+        feed = feedparser.parse(MINT_RSS)
+        articles = []
+        for entry in feed.entries[:max_articles * 3]:  # fetch extra, dedup, then trim
+            articles.append({
+                "title":     entry.get("title", "No Title"),
+                "link":      entry.get("link", "https://www.livemint.com/"),
+                "published": entry.get("published", ""),
+                "source":    "Mint",
+            })
+        articles = _deduplicate(articles)[:max_articles]
+        logger.info(f"Mint: fetched {len(articles)} articles")
+        return articles
+    except Exception as e:
+        logger.warning(f"Mint RSS fetch failed: {e}")
+        return []

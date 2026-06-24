@@ -27,10 +27,9 @@ def _load_template() -> str:
 
 def _build_market_snapshot_html(snapshot: dict) -> str:
     """
-    Builds the market snapshot section as an HTML table — 3 cards per row.
-    Row 1: Nifty, Sensex, USD/INR
-    Row 2: Gold, Silver, Crude Oil
-    Table layout ensures correct rendering in all email clients including mobile.
+    Builds market snapshot as an HTML table — 2 cards per row, 5 rows.
+    Order: Nifty, Sensex | Gold, Silver | USD/INR, Crude | S&P500, NASDAQ | Nikkei, HangSeng
+    Table layout works reliably in all email clients on both desktop and mobile.
     """
 
     def _td(data: dict) -> str:
@@ -39,24 +38,29 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
         bg     = "#f0fdf4" if data["direction"] == "up" else ("#fef2f2" if data["direction"] == "down" else "#f9f9f9")
         border = "#86efac" if data["direction"] == "up" else ("#fca5a5" if data["direction"] == "down" else "#e0e0e0")
         return (
-            f'<td class="snapshot-card" style="background:{bg};border:1px solid {border};">'
+            f'<td class="snapshot-card" style="background:{bg};border:1px solid {border};width:50%;">'
             f'<div class="snapshot-label">{data["label"]}</div>'
             f'<div class="snapshot-price">{data["price"]}</div>'
             f'<div class="snapshot-change" style="color:{color};">{arrow} {data["change"]} ({data["pct_change"]})</div>'
             f'</td>'
         )
 
-    row1 = _td(snapshot["nifty"]) + _td(snapshot["sensex"]) + _td(snapshot["usdinr"])
-    row2 = _td(snapshot["gold"])  + _td(snapshot["silver"]) + _td(snapshot["crude"])
+    rows = [
+        _td(snapshot["nifty"])    + _td(snapshot["sensex"]),
+        _td(snapshot["gold"])     + _td(snapshot["silver"]),
+        _td(snapshot["usdinr"])   + _td(snapshot["crude"]),
+        _td(snapshot["sp500"])    + _td(snapshot["nasdaq"]),
+        _td(snapshot["nikkei"])   + _td(snapshot["hangseng"]),
+    ]
+    table_rows = "\n    ".join(f"<tr>{r}</tr>" for r in rows)
 
     return f"""
 <div class="market-snapshot">
   <div class="snapshot-heading">📈 Market Snapshot</div>
   <table class="snapshot-grid">
-    <tr>{row1}</tr>
-    <tr>{row2}</tr>
+    {table_rows}
   </table>
-  <div class="snapshot-note">Live prices as of email delivery &nbsp;·&nbsp; Nifty/Sensex/USD/Crude: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
+  <div class="snapshot-note">Live prices as of email delivery &nbsp;·&nbsp; Indices/Forex/Crude: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
 </div>"""
 
 
@@ -73,7 +77,38 @@ def _build_category_sections(categories: dict[str, str]) -> str:
     return "\n".join(sections)
 
 
-def build_email_html(summarized: dict, snapshot: dict) -> str:
+def _build_mint_section(mint_articles: list[dict]) -> str:
+    """Builds the General News from Mint section with article cards and Explore More button."""
+    if not mint_articles:
+        return ""
+
+    cards = ""
+    for a in mint_articles:
+        cards += f"""
+  <div class="story">
+    <h4 class="story-title">{a['title']}</h4>
+    <div class="story-link-row">
+      <a class="story-link" href="{a['link']}">Read article →</a>
+      <span class="story-source">Mint</span>
+    </div>
+  </div>"""
+
+    return f"""
+<div class="category-block">
+  <div class="category-label">General News</div>
+  {cards}
+  <div style="text-align:center;margin-top:20px;">
+    <a href="https://www.livemint.com/" class="explore-btn"
+       style="display:inline-block;background:#c2127f;color:#ffffff;font-size:13px;font-weight:700;
+              padding:10px 28px;border-radius:24px;text-decoration:none;letter-spacing:0.5px;">
+      Explore More →
+    </a>
+    <div style="font-size:10px;color:#aaaaaa;margin-top:8px;">Top stories from Mint</div>
+  </div>
+</div>"""
+
+
+def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict]) -> str:
     template = _load_template()
 
     now      = datetime.now()
@@ -82,15 +117,16 @@ def build_email_html(summarized: dict, snapshot: dict) -> str:
 
     market_snapshot_html = _build_market_snapshot_html(snapshot)
     category_sections    = _build_category_sections(summarized["categories"])
+    mint_section         = _build_mint_section(mint_articles)
 
     html = (
         template
-        .replace("{{DATE}}",             date_str)
-        .replace("{{YEAR}}",             year_str)
-        .replace("{{LOGO_URL}}",         "https://raw.githubusercontent.com/Sathivika/etica-daily-intelligence/main/templates/assets/etica_logo.png")
-        .replace("{{MARKET_SNAPSHOT}}",  market_snapshot_html)
+        .replace("{{DATE}}",              date_str)
+        .replace("{{YEAR}}",              year_str)
+        .replace("{{LOGO_URL}}",          "https://raw.githubusercontent.com/Sathivika/etica-daily-intelligence/main/templates/assets/etica_logo.png")
+        .replace("{{MARKET_SNAPSHOT}}",   market_snapshot_html)
         .replace("{{EXECUTIVE_SUMMARY}}", summarized["executive_summary"])
-        .replace("{{CATEGORY_SECTIONS}}", category_sections)
+        .replace("{{CATEGORY_SECTIONS}}", category_sections + mint_section)
     )
     return html
 

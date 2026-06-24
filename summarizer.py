@@ -201,12 +201,13 @@ Rules:
     def _articles_per_category(cat: str) -> int:
         """Different categories get different article counts."""
         counts = {
-            "Indian Stock Market":    2,
-            "Global Markets":         3,
-            "Geopolitics & Trade":    3,
-            "Mutual Funds":           4,  # extra for NFO tracker
-            "Commodities & Currency": 4,
-            "Economy & Policy":       3,
+            "Indian Stock Market":     2,
+            "Global Markets":          3,
+            "Geopolitics & Trade":     3,
+            "Mutual Funds":            4,  # extra for NFO tracker
+            "Commodities & Currency":  4,
+            "Economy & Policy":        3,
+            "Health & Term Insurance": 4,
         }
         return counts.get(cat, 3)
 
@@ -297,7 +298,19 @@ Pick exactly 3 articles covering:
   3. Global or private investor view of India (FDI, sovereign ratings, investor sentiment)
 """
 
-        special_rules = mf_instructions + ism_instructions + gm_instructions + cc_instructions + ep_instructions
+        # Check if Health & Term Insurance is in this batch
+        hi_instructions = ""
+        if "Health & Term Insurance" in cats:
+            hi_instructions = """
+SPECIAL RULE for "Health & Term Insurance" category:
+Pick exactly 3–4 articles covering:
+  1. Health insurance news (new plans, IRDAI regulations, claim settlement, premium changes)
+  2. Term insurance news (new products, coverage trends, mortality charges, rider updates)
+  3. Any broader insurance sector development relevant to Indian retail investors
+Why it matters should address how the development affects a policyholder or someone considering buying cover.
+"""
+
+        special_rules = mf_instructions + ism_instructions + gm_instructions + cc_instructions + ep_instructions + hi_instructions
 
         return f"""You are a senior financial analyst for Etica, a wealth management firm in India.
 
