@@ -3,10 +3,11 @@ main.py
 Etica Daily Intelligence — Master Orchestrator
 
 Flow:
-  1. Fetch news from RSS (all 7 categories)
-  2. Summarize each category + executive summary via Gemini
-  3. Build HTML email
-  4. Send to recipients
+  1. Fetch news from RSS (all categories) + Mint general news
+  2. Summarize each category + executive summary via Groq
+  3. Fetch market snapshot (indices, forex, commodities)
+  4. Build HTML email
+  5. Send to recipients
 
 On any failure → send failure notification email.
 """
@@ -19,7 +20,7 @@ from news_fetcher import fetch_all_news, fetch_market_snapshot, fetch_mint_news
 from summarizer   import summarize_all
 from email_sender import build_email_html, send_email, send_failure_notification
 
-# ── Logging ──────────────────────────────────────────────────────────────────
+# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -34,20 +35,24 @@ def main():
     logger.info("=" * 55)
 
     # ── Step 1: Fetch News ────────────────────────────────────
-    logger.info("[1/4] Fetching news from RSS feeds...")
-    all_news = fetch_all_news()
+    logger.info("[1/5] Fetching news from RSS feeds...")
+    all_news      = fetch_all_news()
+    mint_articles = fetch_mint_news()
 
-    # ── Step 2: Summarize with Gemini ─────────────────────────
-    logger.info("[2/4] Generating intelligence with Gemini...")
+    # ── Step 2: Summarize with Groq ───────────────────────────
+    logger.info("[2/5] Generating intelligence with Groq...")
     summarized = summarize_all(all_news)
 
-    # ── Step 3: Build HTML ────────────────────────────────────
-    logger.info("[3/4] Assembling HTML email...")
+    # ── Step 3: Fetch Market Snapshot ─────────────────────────
+    logger.info("[3/5] Fetching live market snapshot...")
     snapshot = fetch_market_snapshot()
-    html = build_email_html(summarized, snapshot)
 
-    # ── Step 4: Send Email ────────────────────────────────────
-    logger.info("[4/4] Sending email...")
+    # ── Step 4: Build HTML ────────────────────────────────────
+    logger.info("[4/5] Assembling HTML email...")
+    html = build_email_html(summarized, snapshot, mint_articles)
+
+    # ── Step 5: Send Email ────────────────────────────────────
+    logger.info("[5/5] Sending email...")
     send_email(html)
 
     logger.info("=" * 55)
