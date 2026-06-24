@@ -2,7 +2,7 @@ name: Etica Daily Intelligence Brief
 
 on:
   schedule:
-    - cron: "30 0 * * 1-5"
+    - cron: "30 3 * * 1-5"
   workflow_dispatch:
 
 jobs:
