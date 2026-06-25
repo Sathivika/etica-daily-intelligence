@@ -5,6 +5,9 @@ on:
     - cron: "30 2 * * 1-6"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   send-daily-brief:
     runs-on: ubuntu-latest
@@ -13,6 +16,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Keep workflow alive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keep workflow alive [skip ci]"
+          git push
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -33,4 +43,5 @@ jobs:
           RECIPIENT_3:     ${{ secrets.RECIPIENT_3 }}
           RECIPIENT_4:     ${{ secrets.RECIPIENT_4 }}
           RECIPIENT_5:     ${{ secrets.RECIPIENT_5 }}
+          RECIPIENT_6:     ${{ secrets.RECIPIENT_6 }}
         run: python main.py
