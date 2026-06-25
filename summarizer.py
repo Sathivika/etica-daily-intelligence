@@ -423,8 +423,7 @@ def inject_nfo_table(summarized: dict, nfos: list[dict]) -> dict:
     )
 
     # Append live NFO table at the end of Mutual Funds content
-    summarized["categories"]["Mutual Funds"] = mf_html.strip() + "
-" + nfo_html
+    summarized["categories"]["Mutual Funds"] = mf_html.strip() + "\n" + nfo_html
     return summarized
 
 # ── Live NFO Table Builder ────────────────────────────────────────────────────
