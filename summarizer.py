@@ -223,36 +223,8 @@ Rules:
     def _build_categories_prompt(cats: list[str]) -> str:
         cats_text = _build_categories_text(cats)
 
-        # Check if Mutual Funds is in this batch — if so, add NFO table instructions
+        # NFO table is now live from Groww (injected after Groq runs)
         mf_instructions = ""
-        if "Mutual Funds" in cats:
-            mf_instructions = """
-SPECIAL RULE for "Mutual Funds" category:
-After the story divs, add an NFO Tracker table if any NFO is mentioned in the articles.
-Use EXACTLY this structure (if no NFO found, omit this block entirely):
-
-<div class="nfo-table-wrap">
-  <div class="nfo-table-heading">📋 NFO Tracker</div>
-  <table class="nfo-table">
-    <thead>
-      <tr>
-        <th>NFO Name</th>
-        <th>Fund House</th>
-        <th>Open Date</th>
-        <th>Close Date</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>NFO name here</td>
-        <td>Fund house here</td>
-        <td>Open date or "—" if unknown</td>
-        <td>Close date or "—" if unknown</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-"""
 
         # Check if Indian Stock Market is in this batch — 2 specific articles
         ism_instructions = ""
@@ -425,5 +397,88 @@ Rules:
     logger.info("Groq summarization complete.")
     return {
         "executive_summary": executive_summary,
-        "categories": categories_dict
+        "categories": categories_dict,
     }
+
+
+def inject_nfo_table(summarized: dict, nfos: list[dict]) -> dict:
+    """
+    Injects the live NFO table into the Mutual Funds category HTML,
+    replacing any Groq-generated NFO block (or appending if none exists).
+    Called from email_sender after fetching live NFOs.
+    """
+    nfo_html = build_nfo_table_html(nfos)
+    if not nfo_html:
+        return summarized
+
+    mf_html = summarized["categories"].get("Mutual Funds", "")
+
+    # Remove any old Groq-generated nfo-table-wrap block if present
+    import re
+    mf_html = re.sub(
+        r'<div class="nfo-table-wrap">.*?</div>\s*</div>',
+        '',
+        mf_html,
+        flags=re.DOTALL
+    )
+
+    # Append live NFO table at the end of Mutual Funds content
+    summarized["categories"]["Mutual Funds"] = mf_html.strip() + "
+" + nfo_html
+    return summarized
+
+# ── Live NFO Table Builder ────────────────────────────────────────────────────
+
+def build_nfo_table_html(nfos: list[dict]) -> str:
+    """
+    Builds the Live NFO Tracker HTML table from live Groww data.
+    Columns: NFO Name | Fund House | Open Date | Close Date | SID
+    Replaces the old Groq-generated NFO tracker block in the Mutual Funds section.
+    Returns empty string if no NFOs.
+    """
+    if not nfos:
+        return ""
+
+    rows = ""
+    for nfo in nfos:
+        sid_cell = (
+            f'<a href="{nfo["sid_url"]}" target="_blank" '
+            f'style="color:#c2127f;font-weight:600;text-decoration:none;border-bottom:1px solid #c2127f;">View SID →</a>'
+            if nfo.get("sid_url") and nfo["sid_url"] != "https://groww.in/nfo"
+            else '<span style="color:#aaa;">—</span>'
+        )
+        name_cell = (
+            f'<a href="{nfo["groww_url"]}" target="_blank" '
+            f'style="color:#2b2b2b;font-weight:600;text-decoration:none;">{nfo["name"]}</a>'
+            if nfo.get("groww_url")
+            else nfo["name"]
+        )
+        rows += f"""
+      <tr>
+        <td>{name_cell}</td>
+        <td>{nfo["fund_house"]}</td>
+        <td>{nfo["open_date"]}</td>
+        <td>{nfo["close_date"]}</td>
+        <td>{sid_cell}</td>
+      </tr>"""
+
+    return f"""
+<div class="nfo-table-wrap">
+  <div class="nfo-table-heading">📋 Live NFO Tracker</div>
+  <table class="nfo-table">
+    <thead>
+      <tr>
+        <th>NFO Name</th>
+        <th>Fund House</th>
+        <th>Open Date</th>
+        <th>Close Date</th>
+        <th>SID</th>
+      </tr>
+    </thead>
+    <tbody>{rows}
+    </tbody>
+  </table>
+  <div style="font-size:10px;color:#aaaaaa;margin-top:6px;padding-left:2px;">
+    Live data from Groww · Updated daily
+  </div>
+</div>"""

@@ -237,3 +237,133 @@ def fetch_mint_news(max_articles: int = 4) -> list[dict]:
     all_articles = _deduplicate(all_articles)[:max_articles]
     logger.info(f"General News: fetched {len(all_articles)} articles from multiple sources")
     return all_articles
+
+# ── Live NFO Tracker from Groww ───────────────────────────────────────────────
+
+def fetch_live_nfos() -> list[dict]:
+    """
+    Fetches all currently open NFOs from Groww's internal API.
+    Returns list of:
+      {
+        "name":       "Infinity Hybrid Long-Short Fund Direct-Growth",
+        "fund_house": "Kotak Mahindra Mutual Fund",
+        "open_date":  "15 Jun '26",
+        "close_date": "29 Jun '26",
+        "groww_url":  "https://groww.in/nfo/infinity-hybrid-long-short-fund-direct-growth",
+        "sid_url":    "https://groww.in/nfo/infinity-hybrid-long-short-fund-direct-growth"  # SID fetched per fund
+      }
+    Falls back to empty list on failure.
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://groww.in/nfo",
+    }
+
+    # Groww's internal API used by their frontend
+    API_URL = "https://groww.in/v1/api/nfo/all-nfo-list?status=OPEN&page=0&size=50"
+
+    try:
+        resp = requests.get(API_URL, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        nfos = []
+        # API returns { content: [...], totalElements: N, ... }
+        items = data.get("content") or data.get("data") or data.get("nfoList") or []
+
+        for item in items:
+            name       = item.get("schemeName") or item.get("name") or ""
+            fund_house = item.get("amcName") or item.get("fundHouse") or ""
+            open_date  = item.get("nfoStartDate") or item.get("startDate") or "—"
+            close_date = item.get("nfoEndDate") or item.get("endDate") or "—"
+            slug       = item.get("searchId") or item.get("slug") or ""
+            sid_link   = item.get("sidLink") or item.get("sid") or ""
+
+            # Format dates if they come as timestamps
+            import datetime
+            for attr, val in [("open_date", open_date), ("close_date", close_date)]:
+                if isinstance(val, (int, float)) and val > 0:
+                    try:
+                        dt = datetime.datetime.fromtimestamp(val / 1000)
+                        locals()[attr] if False else None
+                        if attr == "open_date":
+                            open_date = dt.strftime("%-d %b '%y")
+                        else:
+                            close_date = dt.strftime("%-d %b '%y")
+                    except Exception:
+                        pass
+
+            groww_url = f"https://groww.in/nfo/{slug}" if slug else "https://groww.in/nfo"
+
+            nfos.append({
+                "name":       name,
+                "fund_house": fund_house,
+                "open_date":  open_date,
+                "close_date": close_date,
+                "groww_url":  groww_url,
+                "sid_url":    sid_link or groww_url,
+            })
+
+        logger.info(f"Groww NFO API: fetched {len(nfos)} open NFOs")
+
+        # If API returned nothing, fall back to scraping the page
+        if not nfos:
+            raise ValueError("API returned empty list — trying scrape fallback")
+
+        return nfos
+
+    except Exception as e:
+        logger.warning(f"Groww NFO API failed ({e}), trying HTML scrape...")
+        return _scrape_nfos_fallback(headers)
+
+
+def _scrape_nfos_fallback(headers: dict) -> list[dict]:
+    """
+    Fallback: scrape https://groww.in/nfo using requests + BeautifulSoup.
+    Groww renders via JS so this may return partial data, but worth trying.
+    """
+    import requests, re, datetime
+    from bs4 import BeautifulSoup
+
+    try:
+        resp = requests.get("https://groww.in/nfo", headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Try to find NFO data in embedded JSON (Next.js __NEXT_DATA__)
+        script = soup.find("script", {"id": "__NEXT_DATA__"})
+        if script:
+            import json
+            next_data = json.loads(script.string)
+            # Navigate the Next.js data tree to find NFO list
+            props = next_data.get("props", {}).get("pageProps", {})
+            for key in ["openNfos", "nfoList", "nfos", "data"]:
+                items = props.get(key)
+                if items and isinstance(items, list):
+                    nfos = []
+                    for item in items:
+                        name       = item.get("schemeName") or item.get("name", "")
+                        fund_house = item.get("amcName") or item.get("fundHouse", "")
+                        slug       = item.get("searchId") or item.get("slug", "")
+                        open_date  = item.get("nfoStartDate") or item.get("startDate", "—")
+                        close_date = item.get("nfoEndDate") or item.get("endDate", "—")
+                        sid_link   = item.get("sidLink") or item.get("sid", "")
+                        groww_url  = f"https://groww.in/nfo/{slug}" if slug else "https://groww.in/nfo"
+                        nfos.append({
+                            "name": name, "fund_house": fund_house,
+                            "open_date": str(open_date), "close_date": str(close_date),
+                            "groww_url": groww_url, "sid_url": sid_link or groww_url,
+                        })
+                    if nfos:
+                        logger.info(f"NFO scrape fallback: found {len(nfos)} NFOs in __NEXT_DATA__")
+                        return nfos
+
+        logger.warning("NFO scrape fallback: no data found in __NEXT_DATA__")
+        return []
+
+    except Exception as e:
+        logger.warning(f"NFO scrape fallback also failed: {e}")
+        return []
