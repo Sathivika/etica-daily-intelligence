@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 # ── Recipients ────────────────────────────────────────────────────────────────
 def _load_recipients() -> list[str]:
-    """Auto-scan RECIPIENT_1, RECIPIENT_2, ... RECIPIENT_N from environment."""
+    """
+    Auto-scans RECIPIENT_1, RECIPIENT_2, ... RECIPIENT_N from environment.
+    Add a new RECIPIENT_N secret in GitHub + YAML to include more people.
+    """
     recipients = []
     i = 1
     while True:
