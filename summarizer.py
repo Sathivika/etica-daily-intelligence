@@ -15,7 +15,7 @@ client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = "llama-3.3-70b-versatile"
 
 # ── SET TO True TO TEST EMAIL PIPELINE WITHOUT USING GROQ API ────────────────
-TEST_MODE = False
+TEST_MODE = True
 
 
 def _call_groq(prompt: str) -> str:
