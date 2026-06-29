@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # To add more recipients: just add RECIPIENT_3, RECIPIENT_4, etc. as GitHub Secrets.
 # No code changes needed — this loop picks them up automatically.
 RECIPIENTS = [
-    os.environ[key]
+    os.environ[key].strip()
     for key in (f"RECIPIENT_{i}" for i in range(1, 21))
     if key in os.environ and os.environ[key].strip()
 ]
@@ -208,7 +208,7 @@ def send_email(html_content: str) -> None:
     today   = datetime.now().strftime("%d %b %Y")
     subject = f"Etica Daily Intelligence Brief · {today}"
 
-    recipients = [r for r in RECIPIENTS if r]
+    recipients = [r.strip() for r in RECIPIENTS if r.strip()]
     if not recipients:
         logger.warning("No recipients configured. Set RECIPIENT_1, RECIPIENT_2, etc. in GitHub Secrets.")
         return
@@ -233,7 +233,7 @@ def send_failure_notification(error: str) -> None:
         if not sender_email or not sender_password:
             return
 
-        recipients = [r for r in RECIPIENTS if r]
+        recipients = [r.strip() for r in RECIPIENTS if r.strip()]
         if not recipients:
             return
 

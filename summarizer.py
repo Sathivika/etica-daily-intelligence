@@ -18,14 +18,28 @@ MODEL = "llama-3.3-70b-versatile"
 TEST_MODE = False
 
 
-def _call_groq(prompt: str) -> str:
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=4000,
-        temperature=0.3,
-    )
-    return response.choices[0].message.content.strip()
+def _call_groq(prompt: str, max_tokens: int = 2000) -> str:
+    """Call Groq with retry on 429 TPM errors using exponential backoff."""
+    wait_times = [30, 60, 90]  # seconds to wait on successive 429s
+    last_err = None
+    for attempt, wait in enumerate([0] + wait_times):
+        if wait:
+            logger.info(f"  Groq TPM limit hit — waiting {wait}s before retry {attempt}...")
+            time.sleep(wait)
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=0.3,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            if "429" in str(e) or "rate_limit" in str(e).lower():
+                last_err = e
+                continue
+            raise
+    raise last_err
 
 
 def _articles_text(articles: list[dict]) -> str:
@@ -189,13 +203,13 @@ Rules:
 - Return ONLY the HTML above. Be specific and data-aware. No markdown, no code fences."""
 
     logger.info("Calling Groq (1/N): Executive summary...")
-    executive_summary = _call_groq(exec_prompt)
+    executive_summary = _call_groq(exec_prompt, max_tokens=1500)
 
-    time.sleep(20)
+    time.sleep(45)  # wait after exec summary before starting category calls
 
-    # ── CALLS 2+: Categories in batches of 2 ─────────────────────────────
+    # ── CALLS 2+: Categories one at a time to stay under 12k TPM ────────
     category_names = list(all_news.keys())
-    batch_size = 2
+    batch_size = 1  # one category per call — keeps each request well under TPM limit
     batches = [category_names[i:i + batch_size] for i in range(0, len(category_names), batch_size)]
 
     def _articles_per_category(cat: str) -> int:
@@ -336,7 +350,7 @@ Rules:
         html_part = _call_groq(_build_categories_prompt(batch))
         categories_html_parts.append(html_part)
         if idx < len(batches):
-            time.sleep(20)
+            time.sleep(45)  # 45s between categories keeps TPM well under 12k/min limit
 
     categories_html = "\n".join(categories_html_parts)
 
