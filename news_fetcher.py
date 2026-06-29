@@ -16,11 +16,14 @@ CATEGORIES = {
     "Indian Stock Market":      "Indian stock market Nifty Sensex BSE NSE index sectors",
     "Global Markets":           "global markets S&P500 Dow Jones NASDAQ US Fed India impact",
     "Geopolitics & Trade":      "geopolitics trade war tariffs India US China sanctions",
-    "Mutual Funds":             "mutual funds SIP India AMC SEBI NFO new fund offer",
+    "Mutual Funds":             "mutual funds SIP India AMC SEBI",
     "Commodities & Currency":   "crude oil gold silver commodity prices India rupee dollar forex",
     "Economy & Policy":         "RBI monetary policy India economy GDP inflation budget fiscal",
     "Health & Term Insurance":  "health insurance term insurance IRDAI India life cover premium claim",
 }
+
+# Dedicated NFO query — merged into Mutual Funds to guarantee NFO articles appear
+NFO_QUERY = "NFO new fund offer mutual fund India open close date 2025 2026"
 
 ARTICLES_PER_CATEGORY = 20
 SIMILARITY_THRESHOLD   = 0.70   # titles more similar than this → duplicate
@@ -52,6 +55,7 @@ def fetch_all_news() -> dict[str, list[dict]]:
     Returns a dict:
       { category_name: [{"title":..., "link":..., "published":..., "source":...}, ...] }
     Order of keys matches the desired email layout.
+    Mutual Funds gets a bonus dedicated NFO fetch merged in to guarantee NFO articles appear.
     """
     all_news: dict[str, list[dict]] = {}
 
@@ -68,6 +72,18 @@ def fetch_all_news() -> dict[str, list[dict]]:
                 "published": entry.get("published", ""),
                 "source":    entry.get("source", {}).get("title", ""),
             })
+
+        # ── Bonus NFO fetch for Mutual Funds ─────────────────────────────
+        if category == "Mutual Funds":
+            logger.info("  Fetching bonus NFO articles...")
+            nfo_feed = feedparser.parse(_rss_url(NFO_QUERY))
+            for entry in nfo_feed.entries[:10]:
+                articles.append({
+                    "title":     entry.get("title", "No Title"),
+                    "link":      entry.get("link",  "#"),
+                    "published": entry.get("published", ""),
+                    "source":    entry.get("source", {}).get("title", ""),
+                })
 
         before = len(articles)
         articles = _deduplicate(articles)
@@ -200,170 +216,180 @@ def fetch_market_snapshot() -> dict:
     return snapshot
 
 
-# ── Mint General News ─────────────────────────────────────────────────────────
+# ── General News (multi-source) ───────────────────────────────────────────────
 
-def fetch_mint_news(max_articles: int = 4) -> list[dict]:
+def fetch_general_news(max_articles: int = 5) -> list[dict]:
     """
     Fetches top general news from multiple Indian news sources via RSS.
-    Returns list of {"title", "link", "source", "published"}.
-    Falls back gracefully on individual source failure.
+    Sources: Mint, Times of India, NDTV, The Hindu, Economic Times.
+    Deduplicates across all sources and returns the top max_articles.
+    Falls back gracefully if any individual source fails.
     """
     SOURCES = [
-        ("https://www.livemint.com/rss/news",                             "Mint"),
-        ("https://economictimes.indiatimes.com/rssfeedsdefault.cms",      "Economic Times"),
-        ("https://www.thehindu.com/news/national/feeder/default.rss",     "The Hindu"),
-        ("https://feeds.feedburner.com/ndtvnews-top-stories",             "NDTV"),
+        ("Mint",             "https://www.livemint.com/rss/news"),
+        ("Times of India",   "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"),
+        ("NDTV",             "https://feeds.feedburner.com/ndtvnews-top-stories"),
+        ("The Hindu",        "https://www.thehindu.com/news/national/feeder/default.rss"),
+        ("Economic Times",   "https://economictimes.indiatimes.com/rssfeedstopstories.cms"),
     ]
 
     all_articles = []
-    for url, source_name in SOURCES:
+    for source_name, rss_url in SOURCES:
         try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:max_articles * 2]:
-                title = entry.get("title", "No Title")
-                # Skip quote-of-the-day / sponsored / ad-style entries
-                skip_keywords = ["quote of the day", "horoscope", "astrology", "recipe", "sponsored"]
-                if any(kw in title.lower() for kw in skip_keywords):
+            feed = feedparser.parse(rss_url)
+            count = 0
+            for entry in feed.entries[:6]:  # up to 6 per source before dedup
+                title = entry.get("title", "").strip()
+                link  = entry.get("link",  "").strip()
+                if not title or not link:
                     continue
                 all_articles.append({
                     "title":     title,
-                    "link":      entry.get("link", f"https://www.livemint.com/"),
+                    "link":      link,
                     "published": entry.get("published", ""),
                     "source":    source_name,
                 })
+                count += 1
+            logger.info(f"  General news — {source_name}: {count} articles")
         except Exception as e:
-            logger.warning(f"RSS fetch failed for {source_name}: {e}")
+            logger.warning(f"  General news — {source_name} failed: {e}")
 
-    all_articles = _deduplicate(all_articles)[:max_articles]
-    logger.info(f"General News: fetched {len(all_articles)} articles from multiple sources")
-    return all_articles
+    deduped = _deduplicate(all_articles)
+    logger.info(f"General news: {len(all_articles)} fetched → {len(deduped)} after dedup → returning top {max_articles}")
+    return deduped[:max_articles]
 
-# ── Live NFO Tracker from Groww ───────────────────────────────────────────────
 
-def fetch_live_nfos() -> list[dict]:
+# ── Live NFO Tracker (AMFI Official) ─────────────────────────────────────────
+
+def fetch_live_nfo() -> list[dict]:
     """
-    Fetches all currently open NFOs from Groww's internal API.
-    Returns list of:
+    Fetches live/open NFOs from two AMFI sources:
+      1. AMFI RSS feed  — gives fund name, fund house, category, launch date
+      2. AMFI NFO HTML  — gives open date, close date, SID PDF link
+
+    Returns list of dicts:
       {
-        "name":       "Infinity Hybrid Long-Short Fund Direct-Growth",
-        "fund_house": "Kotak Mahindra Mutual Fund",
-        "open_date":  "15 Jun '26",
-        "close_date": "29 Jun '26",
-        "groww_url":  "https://groww.in/nfo/infinity-hybrid-long-short-fund-direct-growth",
-        "sid_url":    "https://groww.in/nfo/infinity-hybrid-long-short-fund-direct-growth"  # SID fetched per fund
+        "name":       str,   # Fund name
+        "fund_house": str,   # AMC / Fund house
+        "category":   str,   # Scheme category
+        "open_date":  str,   # NFO open date (DD-MMM-YYYY or "—")
+        "close_date": str,   # NFO close date (DD-MMM-YYYY or "—")
+        "sid_url":    str,   # SID PDF URL from portal.amfiindia.com or ""
       }
-    Falls back to empty list on failure.
+    Falls back to RSS-only data if HTML scrape fails.
     """
     import requests
     from bs4 import BeautifulSoup
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://groww.in/nfo",
-    }
+    AMFI_RSS  = "https://portal.amfiindia.com/RssNAV.aspx?nfo=y"
+    AMFI_HTML = "https://www.amfiindia.com/new-fund-offer"
 
-    # Groww's internal API used by their frontend
-    API_URL = "https://groww.in/v1/api/nfo/all-nfo-list?status=OPEN&page=0&size=50"
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; EticaBot/1.0)"}
 
+    # ── Step 1: Parse RSS for base NFO list ──────────────────────────────
+    rss_nfos = {}
     try:
-        resp = requests.get(API_URL, headers=headers, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+        feed = feedparser.parse(AMFI_RSS)
+        for entry in feed.entries:
+            name = entry.get("title", "").strip()
+            if not name:
+                continue
+            # Parse embedded HTML table in description for fund_house, category, launch_date
+            desc_html = entry.get("description", "")
+            soup = BeautifulSoup(desc_html, "html.parser")
+            rows = soup.find_all("tr")
+            details = {}
+            for row in rows:
+                tds = row.find_all("td")
+                if len(tds) == 2:
+                    key = tds[0].get_text(strip=True).lower()
+                    val = tds[1].get_text(strip=True)
+                    if "mutual fund" in key:
+                        details["fund_house"] = val
+                    elif "category" in key:
+                        details["category"] = val
+                    elif "launch" in key or "date" in key:
+                        details["launch_date"] = val
 
-        nfos = []
-        # API returns { content: [...], totalElements: N, ... }
-        items = data.get("content") or data.get("data") or data.get("nfoList") or []
-
-        for item in items:
-            name       = item.get("schemeName") or item.get("name") or ""
-            fund_house = item.get("amcName") or item.get("fundHouse") or ""
-            open_date  = item.get("nfoStartDate") or item.get("startDate") or "—"
-            close_date = item.get("nfoEndDate") or item.get("endDate") or "—"
-            slug       = item.get("searchId") or item.get("slug") or ""
-            sid_link   = item.get("sidLink") or item.get("sid") or ""
-
-            # Format dates if they come as timestamps
-            import datetime
-            for attr, val in [("open_date", open_date), ("close_date", close_date)]:
-                if isinstance(val, (int, float)) and val > 0:
-                    try:
-                        dt = datetime.datetime.fromtimestamp(val / 1000)
-                        locals()[attr] if False else None
-                        if attr == "open_date":
-                            open_date = dt.strftime("%-d %b '%y")
-                        else:
-                            close_date = dt.strftime("%-d %b '%y")
-                    except Exception:
-                        pass
-
-            groww_url = f"https://groww.in/nfo/{slug}" if slug else "https://groww.in/nfo"
-
-            nfos.append({
+            rss_nfos[name.lower()] = {
                 "name":       name,
-                "fund_house": fund_house,
-                "open_date":  open_date,
-                "close_date": close_date,
-                "groww_url":  groww_url,
-                "sid_url":    sid_link or groww_url,
-            })
-
-        logger.info(f"Groww NFO API: fetched {len(nfos)} open NFOs")
-
-        # If API returned nothing, fall back to scraping the page
-        if not nfos:
-            raise ValueError("API returned empty list — trying scrape fallback")
-
-        return nfos
-
+                "fund_house": details.get("fund_house", "—"),
+                "category":   details.get("category", "—"),
+                "launch_date":details.get("launch_date", "—"),
+                "open_date":  "—",
+                "close_date": "—",
+                "sid_url":    "",
+            }
+        logger.info(f"AMFI RSS: {len(rss_nfos)} NFOs found")
     except Exception as e:
-        logger.warning(f"Groww NFO API failed ({e}), trying HTML scrape...")
-        return _scrape_nfos_fallback(headers)
+        logger.warning(f"AMFI RSS parse failed: {e}")
 
-
-def _scrape_nfos_fallback(headers: dict) -> list[dict]:
-    """
-    Fallback: scrape https://groww.in/nfo using requests + BeautifulSoup.
-    Groww renders via JS so this may return partial data, but worth trying.
-    """
-    import requests, re, datetime
-    from bs4 import BeautifulSoup
-
+    # ── Step 2: Scrape AMFI HTML for open/close dates and SID links ──────
     try:
-        resp = requests.get("https://groww.in/nfo", headers=headers, timeout=15)
+        resp = requests.get(AMFI_HTML, headers=headers, timeout=15)
+        resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Try to find NFO data in embedded JSON (Next.js __NEXT_DATA__)
-        script = soup.find("script", {"id": "__NEXT_DATA__"})
-        if script:
-            import json
-            next_data = json.loads(script.string)
-            # Navigate the Next.js data tree to find NFO list
-            props = next_data.get("props", {}).get("pageProps", {})
-            for key in ["openNfos", "nfoList", "nfos", "data"]:
-                items = props.get(key)
-                if items and isinstance(items, list):
-                    nfos = []
-                    for item in items:
-                        name       = item.get("schemeName") or item.get("name", "")
-                        fund_house = item.get("amcName") or item.get("fundHouse", "")
-                        slug       = item.get("searchId") or item.get("slug", "")
-                        open_date  = item.get("nfoStartDate") or item.get("startDate", "—")
-                        close_date = item.get("nfoEndDate") or item.get("endDate", "—")
-                        sid_link   = item.get("sidLink") or item.get("sid", "")
-                        groww_url  = f"https://groww.in/nfo/{slug}" if slug else "https://groww.in/nfo"
-                        nfos.append({
-                            "name": name, "fund_house": fund_house,
-                            "open_date": str(open_date), "close_date": str(close_date),
-                            "groww_url": groww_url, "sid_url": sid_link or groww_url,
-                        })
-                    if nfos:
-                        logger.info(f"NFO scrape fallback: found {len(nfos)} NFOs in __NEXT_DATA__")
-                        return nfos
+        # AMFI NFO page has a table with columns:
+        # Scheme Name | Open Date | Close Date | Scheme Type | SID
+        tables = soup.find_all("table")
+        for table in tables:
+            rows = table.find_all("tr")
+            for row in rows:
+                cells = row.find_all(["td", "th"])
+                if len(cells) < 3:
+                    continue
+                texts = [c.get_text(strip=True) for c in cells]
+                # Try to find SID link in any cell
+                sid_url = ""
+                for cell in cells:
+                    a = cell.find("a", href=True)
+                    if a and "portal.amfiindia.com" in a["href"] and ".pdf" in a["href"]:
+                        sid_url = a["href"]
+                        break
+                    elif a and "spages" in str(a.get("href", "")):
+                        href = a["href"]
+                        if not href.startswith("http"):
+                            href = "https://portal.amfiindia.com" + href
+                        sid_url = href
+                        break
 
-        logger.warning("NFO scrape fallback: no data found in __NEXT_DATA__")
-        return []
+                # Match row to an RSS NFO by name fuzzy match
+                scheme_name = texts[0].strip().lower()
+                if not scheme_name:
+                    continue
 
+                for key in rss_nfos:
+                    if _similar(key, scheme_name) > 0.75:
+                        # Try to extract dates — look for DD-Mon-YYYY pattern
+                        import re
+                        date_pat = re.compile(r'\d{2}-[A-Za-z]{3}-\d{4}')
+                        dates = []
+                        for t in texts[1:]:
+                            m = date_pat.search(t)
+                            if m:
+                                dates.append(m.group())
+                        if len(dates) >= 2:
+                            rss_nfos[key]["open_date"]  = dates[0]
+                            rss_nfos[key]["close_date"] = dates[1]
+                        elif len(dates) == 1:
+                            rss_nfos[key]["open_date"] = dates[0]
+                        if sid_url:
+                            rss_nfos[key]["sid_url"] = sid_url
+                        break
+
+        logger.info("AMFI HTML: open/close dates and SID links extracted")
     except Exception as e:
-        logger.warning(f"NFO scrape fallback also failed: {e}")
-        return []
+        logger.warning(f"AMFI HTML scrape failed (using RSS data only): {e}")
+
+    # ── Step 3: Fill missing close dates using launch_date as fallback ───
+    result = []
+    for nfo in rss_nfos.values():
+        if nfo["close_date"] == "—" and nfo.get("launch_date") and nfo["launch_date"] != "—":
+            # launch_date from RSS is the NFO open/launch date
+            nfo["open_date"] = nfo.get("launch_date", "—")
+        nfo.pop("launch_date", None)
+        result.append(nfo)
+
+    logger.info(f"Live NFO tracker: {len(result)} NFOs ready")
+    return result

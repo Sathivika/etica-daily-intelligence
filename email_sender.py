@@ -13,23 +13,14 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# ── Recipients ────────────────────────────────────────────────────────────────
-def _load_recipients() -> list[str]:
-    """
-    Auto-scans RECIPIENT_1, RECIPIENT_2, ... RECIPIENT_N from environment.
-    Add a new RECIPIENT_N secret in GitHub + YAML to include more people.
-    """
-    recipients = []
-    i = 1
-    while True:
-        val = os.environ.get(f"RECIPIENT_{i}", "").strip()
-        if not val:
-            break
-        recipients.append(val)
-        i += 1
-    return recipients
-
-RECIPIENTS = _load_recipients()
+# ── Recipients — auto-scans RECIPIENT_1 through RECIPIENT_20 ─────────────────
+# To add more recipients: just add RECIPIENT_3, RECIPIENT_4, etc. as GitHub Secrets.
+# No code changes needed — this loop picks them up automatically.
+RECIPIENTS = [
+    os.environ[key]
+    for key in (f"RECIPIENT_{i}" for i in range(1, 21))
+    if key in os.environ and os.environ[key].strip()
+]
 
 
 def _load_template() -> str:
@@ -76,101 +67,118 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
 </div>"""
 
 
-def _build_category_sections(categories: dict[str, str]) -> str:
+def _build_category_sections(categories: dict[str, str], nfo_list: list[dict]) -> str:
+    """Wraps each AI-generated category HTML in a styled block.
+    For Mutual Funds, injects the Live NFO Tracker table after the stories.
+    """
     sections = []
     for category, html in categories.items():
+        extra = ""
+        if category == "Mutual Funds" and nfo_list:
+            extra = _build_nfo_table(nfo_list)
         section = f"""
 <div class="category-block">
   <div class="category-label">{category}</div>
   {html}
+  {extra}
 </div>
 """
         sections.append(section)
     return "\n".join(sections)
 
 
-def _summarize_general_news(articles: list[dict]) -> str:
-    """
-    Calls Groq to generate story cards for General News with the same
-    HTML structure (summary + why it matters) as all other categories.
-    Falls back to title-only cards on failure.
-    """
-    import os
-    from groq import Groq
+def _build_nfo_table(nfo_list: list[dict]) -> str:
+    """Builds the Live NFO Tracker table sourced from AMFI."""
+    if not nfo_list:
+        return ""
 
-    try:
-        client = Groq(api_key=os.environ["GROQ_API_KEY"])
-        articles_text = "\n".join(
-            f"{i+1}. {a['title']}  [{a['source']}]  {a['link']}"
-            for i, a in enumerate(articles)
+    rows = ""
+    for nfo in nfo_list:
+        sid_cell = (
+            f'<a href="{nfo["sid_url"]}" style="color:#c2127f;font-weight:600;text-decoration:none;" target="_blank">View SID →</a>'
+            if nfo.get("sid_url")
+            else "—"
         )
-        prompt = f"""You are a senior analyst for Etica, a wealth management firm in India.
+        rows += f"""
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#2b2b2b;font-size:12px;line-height:1.4;">{nfo["name"]}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;">{nfo["fund_house"]}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;white-space:nowrap;">{nfo["open_date"]}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;white-space:nowrap;">{nfo["close_date"]}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;font-size:12px;white-space:nowrap;">{sid_cell}</td>
+      </tr>"""
 
-Here are today's top general news headlines:
-{articles_text}
-
-For EACH article, return a story card using EXACTLY this HTML structure:
-
-<div class="story">
-  <h4 class="story-title">Exact headline</h4>
-  <p class="story-summary">2-sentence factual summary. Do NOT repeat the headline key words in the first sentence.</p>
-  <p class="story-why"><strong>Why it matters:</strong> 1 sentence on why this is relevant to an Indian reader or investor.</p>
-  <div class="story-link-row">
-    <a class="story-link" href="ACTUAL_URL">Read article →</a>
-    <span class="story-source">Source name</span>
+    return f"""
+<div class="nfo-table-wrap" style="margin-top:20px;">
+  <div class="nfo-table-heading" style="font-size:13px;font-weight:700;color:#c2127f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
+    📋 Live NFO Tracker &nbsp;<span style="font-size:10px;font-weight:400;color:#888;text-transform:none;letter-spacing:0;">Source: AMFI India</span>
   </div>
-</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr>
+        <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">NFO Name</th>
+        <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">Fund House</th>
+        <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">Open Date</th>
+        <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">Close Date</th>
+        <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">SID Doc</th>
+      </tr>
+    </thead>
+    <tbody>{rows}
+    </tbody>
+  </table>
+  <div style="text-align:center;margin-top:12px;">
+    <a href="https://www.amfiindia.com/new-fund-offer"
+       style="display:inline-block;background:#c2127f;color:#ffffff;font-size:12px;font-weight:700;
+              padding:8px 20px;border-radius:20px;text-decoration:none;letter-spacing:0.5px;">
+      View All NFOs on AMFI →
+    </a>
+  </div>
+</div>"""
 
-Rules:
-- Return ONLY the story div blocks. No wrapper divs, no markdown, no code fences.
-- story-source must match the source name from the article list."""
 
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1500,
-            temperature=0.3,
-        )
-        return response.choices[0].message.content.strip()
+def _build_mint_section(mint_articles: list[dict]) -> str:
+    """Builds the General News section with multi-source articles and Explore More links."""
+    if not mint_articles:
+        return ""
 
-    except Exception as e:
-        logger.warning(f"Groq summarization for General News failed: {e}. Falling back to title-only cards.")
-        fallback = ""
-        for a in articles:
-            fallback += f"""
+    cards = ""
+    for a in mint_articles:
+        source = a.get("source", "News")
+        cards += f"""
   <div class="story">
     <h4 class="story-title">{a['title']}</h4>
     <div class="story-link-row">
       <a class="story-link" href="{a['link']}">Read article →</a>
-      <span class="story-source">{a['source']}</span>
+      <span class="story-source">{source}</span>
     </div>
   </div>"""
-        return fallback
-
-
-def _build_mint_section(mint_articles: list[dict]) -> str:
-    """Builds the General News section — summarized by Groq to match all other category cards."""
-    if not mint_articles:
-        return ""
-
-    cards = _summarize_general_news(mint_articles)
 
     return f"""
 <div class="category-block">
   <div class="category-label">General News</div>
   {cards}
   <div style="text-align:center;margin-top:20px;">
-    <a href="https://news.google.com/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pKVGlnQVAB?hl=en-IN&gl=IN&ceid=IN%3Aen"
-       style="display:inline-block;background:#c2127f;color:#ffffff;font-size:13px;font-weight:700;
-              padding:10px 28px;border-radius:24px;text-decoration:none;letter-spacing:0.5px;">
-      Explore More →
+    <a href="https://www.livemint.com/"
+       style="display:inline-block;background:#c2127f;color:#ffffff;font-size:12px;font-weight:700;
+              padding:8px 18px;border-radius:20px;text-decoration:none;letter-spacing:0.5px;margin:4px;">
+      Mint →
     </a>
-    <div style="font-size:10px;color:#aaaaaa;margin-top:8px;">Top stories from Indian news sources</div>
+    <a href="https://economictimes.indiatimes.com/"
+       style="display:inline-block;background:#c2127f;color:#ffffff;font-size:12px;font-weight:700;
+              padding:8px 18px;border-radius:20px;text-decoration:none;letter-spacing:0.5px;margin:4px;">
+      Economic Times →
+    </a>
+    <a href="https://www.google.com/news"
+       style="display:inline-block;background:#c2127f;color:#ffffff;font-size:12px;font-weight:700;
+              padding:8px 18px;border-radius:20px;text-decoration:none;letter-spacing:0.5px;margin:4px;">
+      Google News →
+    </a>
+    <div style="font-size:10px;color:#aaaaaa;margin-top:10px;">Top stories from India's leading publications</div>
   </div>
 </div>"""
 
 
-def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict]) -> str:
+def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict], nfo_list: list[dict]) -> str:
     template = _load_template()
 
     now      = datetime.now()
@@ -178,7 +186,7 @@ def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict]
     year_str = str(now.year)
 
     market_snapshot_html = _build_market_snapshot_html(snapshot)
-    category_sections    = _build_category_sections(summarized["categories"])
+    category_sections    = _build_category_sections(summarized["categories"], nfo_list)
     mint_section         = _build_mint_section(mint_articles)
 
     html = (
@@ -200,7 +208,7 @@ def send_email(html_content: str) -> None:
     today   = datetime.now().strftime("%d %b %Y")
     subject = f"Etica Daily Intelligence Brief · {today}"
 
-    recipients = _load_recipients()
+    recipients = [r for r in RECIPIENTS if r]
     if not recipients:
         logger.warning("No recipients configured. Set RECIPIENT_1, RECIPIENT_2, etc. in GitHub Secrets.")
         return
@@ -225,7 +233,7 @@ def send_failure_notification(error: str) -> None:
         if not sender_email or not sender_password:
             return
 
-        recipients = _load_recipients()
+        recipients = [r for r in RECIPIENTS if r]
         if not recipients:
             return
 

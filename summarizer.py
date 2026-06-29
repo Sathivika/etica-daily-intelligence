@@ -223,8 +223,14 @@ Rules:
     def _build_categories_prompt(cats: list[str]) -> str:
         cats_text = _build_categories_text(cats)
 
-        # NFO table is now live from Groww (injected after Groq runs)
+        # Check if Mutual Funds is in this batch
         mf_instructions = ""
+        if "Mutual Funds" in cats:
+            mf_instructions = """
+SPECIAL RULE for "Mutual Funds" category:
+Focus on mutual fund news — SIP trends, AMC announcements, SEBI regulations, fund performance.
+Do NOT generate an NFO table — NFO data is handled separately via AMFI's official live feed.
+"""
 
         # Check if Indian Stock Market is in this batch — 2 specific articles
         ism_instructions = ""
@@ -335,57 +341,45 @@ Rules:
     categories_html = "\n".join(categories_html_parts)
 
     # ── Parse response into per-category dict ────────────────────────────
+    # Split on the opening tag of each category block — avoids nested </div> issues
     categories_dict = {}
+    parts = re.split(r'(?=<div class="category-stories" data-category=")', categories_html)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r'<div class="category-stories" data-category="([^"]+)">(.*)', part, re.DOTALL)
+        if not m:
+            continue
+        cat_name   = m.group(1).strip()
+        inner_html = m.group(2).strip()
 
-    def _extract_category_blocks(html: str) -> list[tuple[str, str]]:
-        """
-        Extracts (category_name, inner_html) pairs from the LLM output.
-        Handles nested divs correctly by counting open/close tags.
-        """
-        results = []
-        search_from = 0
-        open_tag = '<div class="category-stories" data-category="'
-        while True:
-            start = html.find(open_tag, search_from)
-            if start == -1:
-                break
-            # Extract category name
-            name_start = start + len(open_tag)
-            name_end = html.find('"', name_start)
-            cat_name = html[name_start:name_end]
-
-            # Find the matching closing </div> by counting nesting depth
-            pos = html.find('>', name_end) + 1  # skip past opening tag's >
-            depth = 1
-            while pos < len(html) and depth > 0:
-                open_pos  = html.find('<div', pos)
-                close_pos = html.find('</div>', pos)
-                if close_pos == -1:
+        # Remove only the single outermost closing </div> that wraps category-stories.
+        # We do this by counting div depth to find the correct closing tag position.
+        depth = 0
+        close_pos = len(inner_html)
+        i = 0
+        while i < len(inner_html):
+            if inner_html[i:i+4] == "<div":
+                depth += 1
+                i += 4
+            elif inner_html[i:i+6] == "</div>":
+                if depth == 0:
+                    close_pos = i
                     break
-                if open_pos != -1 and open_pos < close_pos:
-                    depth += 1
-                    pos = open_pos + 4
-                else:
-                    depth -= 1
-                    if depth == 0:
-                        inner_html = html[html.find('>', name_end) + 1 : close_pos].strip()
-                        results.append((cat_name, inner_html))
-                        search_from = close_pos + 6  # len("</div>") == 6
-                        break
-                    pos = close_pos + 6
+                depth -= 1
+                i += 6
             else:
-                search_from = name_end
-        return results
+                i += 1
+        inner_html = inner_html[:close_pos].strip()
 
-    matches = _extract_category_blocks(categories_html)
+        for known_cat in all_news.keys():
+            if known_cat.lower() in cat_name.lower() or cat_name.lower() in known_cat.lower():
+                categories_dict[known_cat] = inner_html
+                logger.info(f"  Parsed category: {known_cat} ({len(inner_html)} chars)")
+                break
 
-    if matches:
-        for cat_name, stories_html in matches:
-            for known_cat in all_news.keys():
-                if known_cat.lower() in cat_name.lower() or cat_name.lower() in known_cat.lower():
-                    categories_dict[known_cat] = stories_html.strip()
-                    break
-    else:
+    if not categories_dict:
         logger.warning("Could not parse categories, using full response as fallback")
         for category in all_news.keys():
             categories_dict[category] = categories_html
@@ -397,87 +391,5 @@ Rules:
     logger.info("Groq summarization complete.")
     return {
         "executive_summary": executive_summary,
-        "categories": categories_dict,
+        "categories": categories_dict
     }
-
-
-def inject_nfo_table(summarized: dict, nfos: list[dict]) -> dict:
-    """
-    Injects the live NFO table into the Mutual Funds category HTML,
-    replacing any Groq-generated NFO block (or appending if none exists).
-    Called from email_sender after fetching live NFOs.
-    """
-    nfo_html = build_nfo_table_html(nfos)
-    if not nfo_html:
-        return summarized
-
-    mf_html = summarized["categories"].get("Mutual Funds", "")
-
-    # Remove any old Groq-generated nfo-table-wrap block if present
-    import re
-    mf_html = re.sub(
-        r'<div class="nfo-table-wrap">.*?</div>\s*</div>',
-        '',
-        mf_html,
-        flags=re.DOTALL
-    )
-
-    # Append live NFO table at the end of Mutual Funds content
-    summarized["categories"]["Mutual Funds"] = mf_html.strip() + "\n" + nfo_html
-    return summarized
-
-# ── Live NFO Table Builder ────────────────────────────────────────────────────
-
-def build_nfo_table_html(nfos: list[dict]) -> str:
-    """
-    Builds the Live NFO Tracker HTML table from live Groww data.
-    Columns: NFO Name | Fund House | Open Date | Close Date | SID
-    Replaces the old Groq-generated NFO tracker block in the Mutual Funds section.
-    Returns empty string if no NFOs.
-    """
-    if not nfos:
-        return ""
-
-    rows = ""
-    for nfo in nfos:
-        sid_cell = (
-            f'<a href="{nfo["sid_url"]}" target="_blank" '
-            f'style="color:#c2127f;font-weight:600;text-decoration:none;border-bottom:1px solid #c2127f;">View SID →</a>'
-            if nfo.get("sid_url") and nfo["sid_url"] != "https://groww.in/nfo"
-            else '<span style="color:#aaa;">—</span>'
-        )
-        name_cell = (
-            f'<a href="{nfo["groww_url"]}" target="_blank" '
-            f'style="color:#2b2b2b;font-weight:600;text-decoration:none;">{nfo["name"]}</a>'
-            if nfo.get("groww_url")
-            else nfo["name"]
-        )
-        rows += f"""
-      <tr>
-        <td>{name_cell}</td>
-        <td>{nfo["fund_house"]}</td>
-        <td>{nfo["open_date"]}</td>
-        <td>{nfo["close_date"]}</td>
-        <td>{sid_cell}</td>
-      </tr>"""
-
-    return f"""
-<div class="nfo-table-wrap">
-  <div class="nfo-table-heading">📋 Live NFO Tracker</div>
-  <table class="nfo-table">
-    <thead>
-      <tr>
-        <th>NFO Name</th>
-        <th>Fund House</th>
-        <th>Open Date</th>
-        <th>Close Date</th>
-        <th>SID</th>
-      </tr>
-    </thead>
-    <tbody>{rows}
-    </tbody>
-  </table>
-  <div style="font-size:10px;color:#aaaaaa;margin-top:6px;padding-left:2px;">
-    Live data from Groww · Updated daily
-  </div>
-</div>"""
