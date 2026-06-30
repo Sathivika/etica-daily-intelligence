@@ -42,6 +42,19 @@ def _call_groq(prompt: str, max_tokens: int = 2000) -> str:
     raise last_err
 
 
+def _sanitize_category_html(html: str) -> str:
+    """
+    Safety net: strips any inline style="..." attributes Groq might add.
+    These can override the email template's CSS and break the stacked
+    vertical card layout into side-by-side columns/flex/grid — which is
+    exactly the visual bug this guards against for categories like
+    Economy & Policy and General News.
+    """
+    html = re.sub(r'\s+style="[^"]*"', '', html)
+    html = re.sub(r"\s+style='[^']*'", '', html)
+    return html
+
+
 def _articles_text(articles: list[dict]) -> str:
     lines = []
     for i, a in enumerate(articles, 1):
@@ -261,10 +274,11 @@ Pick exactly 2 articles:
         if "Global Markets" in cats:
             gm_instructions = """
 SPECIAL RULE for "Global Markets" category:
-Pick exactly 3 articles:
-  1. A US-markets specific story (Fed, S&P, Nasdaq, Dow)
-  2. How global developments are impacting India specifically
-  3. Any other significant global market development affecting Indian investors
+Pick exactly 3 articles covering a MIX of:
+  1. A Federal Reserve specific story — interest rate decisions, FOMC meeting outcomes, Fed Chair statements, US jobs/employment data, or US monetary policy direction (Federal Reserve is the US central bank, equivalent to India's RBI)
+  2. How global developments (Fed policy, US markets, global liquidity) are impacting India specifically
+  3. Any other significant global market development affecting Indian investors (S&P 500, Nasdaq, Dow, global indices)
+Prioritize Fed/FOMC/US interest rate/US jobs articles when available in the source list — these are high priority for this category.
 """
 
         # Check if Commodities & Currency is in this batch
@@ -342,6 +356,8 @@ Rules:
 - story-summary must NOT repeat the headline's key nouns/verbs in the opening phrase — rephrase to add context.
 - "What To Tell Investors" bullets must be conversational, reassuring, and specific to today's news in this category.
 - Generate one <div class="category-stories"> block for EVERY category listed above.
+- CRITICAL: Every story MUST be its own separate <div class="story">...</div> block, stacked vertically one after another. NEVER wrap multiple stories in a single shared container, NEVER use flexbox, NEVER use CSS Grid, NEVER add a "style" attribute to any element, and NEVER place stories side-by-side in columns. Each story div must be 100% width and appear below the previous one, exactly like the template example above.
+- Do NOT add any class names other than the ones shown in the template above (story, story-title, story-summary, story-why, story-link-row, story-link, story-source, investor-tips, investor-tips-heading).
 - Return ONLY HTML. No markdown. No code fences. No extra text."""
 
     categories_html_parts = []
@@ -389,7 +405,7 @@ Rules:
 
         for known_cat in all_news.keys():
             if known_cat.lower() in cat_name.lower() or cat_name.lower() in known_cat.lower():
-                categories_dict[known_cat] = inner_html
+                categories_dict[known_cat] = _sanitize_category_html(inner_html)
                 logger.info(f"  Parsed category: {known_cat} ({len(inner_html)} chars)")
                 break
 

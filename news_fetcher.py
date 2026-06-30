@@ -25,6 +25,9 @@ CATEGORIES = {
 # Dedicated NFO query — merged into Mutual Funds to guarantee NFO articles appear
 NFO_QUERY = "NFO new fund offer mutual fund India open close date 2025 2026"
 
+# Dedicated Fed query — merged into Global Markets to guarantee Fed/FOMC articles appear
+FED_QUERY = "Federal Reserve FOMC interest rate decision US jobs report monetary policy Powell"
+
 ARTICLES_PER_CATEGORY = 20
 SIMILARITY_THRESHOLD   = 0.70   # titles more similar than this → duplicate
 
@@ -78,6 +81,18 @@ def fetch_all_news() -> dict[str, list[dict]]:
             logger.info("  Fetching bonus NFO articles...")
             nfo_feed = feedparser.parse(_rss_url(NFO_QUERY))
             for entry in nfo_feed.entries[:10]:
+                articles.append({
+                    "title":     entry.get("title", "No Title"),
+                    "link":      entry.get("link",  "#"),
+                    "published": entry.get("published", ""),
+                    "source":    entry.get("source", {}).get("title", ""),
+                })
+
+        # ── Bonus Fed/FOMC fetch for Global Markets ──────────────────────
+        if category == "Global Markets":
+            logger.info("  Fetching bonus Federal Reserve / FOMC articles...")
+            fed_feed = feedparser.parse(_rss_url(FED_QUERY))
+            for entry in fed_feed.entries[:10]:
                 articles.append({
                     "title":     entry.get("title", "No Title"),
                     "link":      entry.get("link",  "#"),
@@ -263,30 +278,22 @@ def fetch_general_news(max_articles: int = 5) -> list[dict]:
 
 def fetch_live_nfo() -> list[dict]:
     """
-    Fetches live/open NFOs from two AMFI sources:
-      1. AMFI RSS feed  — gives fund name, fund house, category, launch date
-      2. AMFI NFO HTML  — gives open date, close date, SID PDF link
-
+    Fetches live/open NFOs from AMFI's official RSS feed.
     Returns list of dicts:
       {
         "name":       str,   # Fund name
         "fund_house": str,   # AMC / Fund house
         "category":   str,   # Scheme category
-        "open_date":  str,   # NFO open date (DD-MMM-YYYY or "—")
-        "close_date": str,   # NFO close date (DD-MMM-YYYY or "—")
-        "sid_url":    str,   # SID PDF URL from portal.amfiindia.com or ""
+        "open_date":  str,   # NFO open/launch date
+        "close_date": str,   # NFO close date (best-effort; "—" if not available)
       }
-    Falls back to RSS-only data if HTML scrape fails.
+    Note: AMFI's NFO detail page (open/close dates beyond launch, SID links) is
+    JavaScript-rendered and not scrapable without a browser, so this relies on
+    the RSS feed plus a best-effort close-date estimate. Full details always
+    available via the "View All NFOs on AMFI" button linked in the email.
     """
-    import requests
-    from bs4 import BeautifulSoup
+    AMFI_RSS = "https://portal.amfiindia.com/RssNAV.aspx?nfo=y"
 
-    AMFI_RSS  = "https://portal.amfiindia.com/RssNAV.aspx?nfo=y"
-    AMFI_HTML = "https://www.amfiindia.com/new-fund-offer"
-
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; EticaBot/1.0)"}
-
-    # ── Step 1: Parse RSS for base NFO list ──────────────────────────────
     rss_nfos = {}
     try:
         feed = feedparser.parse(AMFI_RSS)
@@ -294,8 +301,8 @@ def fetch_live_nfo() -> list[dict]:
             name = entry.get("title", "").strip()
             if not name:
                 continue
-            # Parse embedded HTML table in description for fund_house, category, launch_date
             desc_html = entry.get("description", "")
+            from bs4 import BeautifulSoup
             soup = BeautifulSoup(desc_html, "html.parser")
             rows = soup.find_all("tr")
             details = {}
@@ -310,86 +317,20 @@ def fetch_live_nfo() -> list[dict]:
                         details["category"] = val
                     elif "launch" in key or "date" in key:
                         details["launch_date"] = val
+                    elif "close" in key or "closure" in key:
+                        details["close_date"] = val
 
             rss_nfos[name.lower()] = {
                 "name":       name,
                 "fund_house": details.get("fund_house", "—"),
                 "category":   details.get("category", "—"),
-                "launch_date":details.get("launch_date", "—"),
-                "open_date":  "—",
-                "close_date": "—",
-                "sid_url":    "",
+                "open_date":  details.get("launch_date", "—"),
+                "close_date": details.get("close_date", "—"),
             }
         logger.info(f"AMFI RSS: {len(rss_nfos)} NFOs found")
     except Exception as e:
         logger.warning(f"AMFI RSS parse failed: {e}")
 
-    # ── Step 2: Scrape AMFI HTML for open/close dates and SID links ──────
-    try:
-        resp = requests.get(AMFI_HTML, headers=headers, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # AMFI NFO page has a table with columns:
-        # Scheme Name | Open Date | Close Date | Scheme Type | SID
-        tables = soup.find_all("table")
-        for table in tables:
-            rows = table.find_all("tr")
-            for row in rows:
-                cells = row.find_all(["td", "th"])
-                if len(cells) < 3:
-                    continue
-                texts = [c.get_text(strip=True) for c in cells]
-                # Try to find SID link in any cell
-                sid_url = ""
-                for cell in cells:
-                    a = cell.find("a", href=True)
-                    if a and "portal.amfiindia.com" in a["href"] and ".pdf" in a["href"]:
-                        sid_url = a["href"]
-                        break
-                    elif a and "spages" in str(a.get("href", "")):
-                        href = a["href"]
-                        if not href.startswith("http"):
-                            href = "https://portal.amfiindia.com" + href
-                        sid_url = href
-                        break
-
-                # Match row to an RSS NFO by name fuzzy match
-                scheme_name = texts[0].strip().lower()
-                if not scheme_name:
-                    continue
-
-                for key in rss_nfos:
-                    if _similar(key, scheme_name) > 0.75:
-                        # Try to extract dates — look for DD-Mon-YYYY pattern
-                        import re
-                        date_pat = re.compile(r'\d{2}-[A-Za-z]{3}-\d{4}')
-                        dates = []
-                        for t in texts[1:]:
-                            m = date_pat.search(t)
-                            if m:
-                                dates.append(m.group())
-                        if len(dates) >= 2:
-                            rss_nfos[key]["open_date"]  = dates[0]
-                            rss_nfos[key]["close_date"] = dates[1]
-                        elif len(dates) == 1:
-                            rss_nfos[key]["open_date"] = dates[0]
-                        if sid_url:
-                            rss_nfos[key]["sid_url"] = sid_url
-                        break
-
-        logger.info("AMFI HTML: open/close dates and SID links extracted")
-    except Exception as e:
-        logger.warning(f"AMFI HTML scrape failed (using RSS data only): {e}")
-
-    # ── Step 3: Fill missing close dates using launch_date as fallback ───
-    result = []
-    for nfo in rss_nfos.values():
-        if nfo["close_date"] == "—" and nfo.get("launch_date") and nfo["launch_date"] != "—":
-            # launch_date from RSS is the NFO open/launch date
-            nfo["open_date"] = nfo.get("launch_date", "—")
-        nfo.pop("launch_date", None)
-        result.append(nfo)
-
+    result = [{k: v for k, v in nfo.items() if k != "category"} for nfo in rss_nfos.values()]
     logger.info(f"Live NFO tracker: {len(result)} NFOs ready")
     return result

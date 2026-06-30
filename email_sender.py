@@ -88,24 +88,18 @@ def _build_category_sections(categories: dict[str, str], nfo_list: list[dict]) -
 
 
 def _build_nfo_table(nfo_list: list[dict]) -> str:
-    """Builds the Live NFO Tracker table sourced from AMFI."""
+    """Builds the Live NFO Tracker table sourced from AMFI (Name, Fund House, Open Date, Close Date)."""
     if not nfo_list:
         return ""
 
     rows = ""
     for nfo in nfo_list:
-        sid_cell = (
-            f'<a href="{nfo["sid_url"]}" style="color:#c2127f;font-weight:600;text-decoration:none;" target="_blank">View SID →</a>'
-            if nfo.get("sid_url")
-            else "—"
-        )
         rows += f"""
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#2b2b2b;font-size:12px;line-height:1.4;">{nfo["name"]}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;">{nfo["fund_house"]}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;white-space:nowrap;">{nfo["open_date"]}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;white-space:nowrap;">{nfo["close_date"]}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;font-size:12px;white-space:nowrap;">{sid_cell}</td>
       </tr>"""
 
     return f"""
@@ -120,7 +114,6 @@ def _build_nfo_table(nfo_list: list[dict]) -> str:
         <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">Fund House</th>
         <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">Open Date</th>
         <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">Close Date</th>
-        <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">SID Doc</th>
       </tr>
     </thead>
     <tbody>{rows}
