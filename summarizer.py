@@ -42,17 +42,94 @@ def _call_groq(prompt: str, max_tokens: int = 2000) -> str:
     raise last_err
 
 
+def _rebuild_story_html(raw_html: str) -> str:
+    """
+    GUARANTEED LAYOUT FIX: Instead of trusting Groq's raw HTML structure
+    (which can drift into side-by-side columns under load/retries), this
+    extracts the actual content (title, summary, why-it-matters, link,
+    source) via regex and re-emits clean, guaranteed-correct vertical
+    <div class="story"> blocks using our own template — ignoring whatever
+    wrapper/layout Groq may have generated around them.
+    Falls back to the sanitized raw HTML if no stories can be extracted.
+    """
+    story_pattern = re.compile(
+        r'<h4[^>]*class="story-title"[^>]*>(.*?)</h4>\s*'
+        r'(?:<p[^>]*class="story-summary"[^>]*>(.*?)</p>\s*)?'
+        r'(?:<p[^>]*class="story-why"[^>]*>(.*?)</p>\s*)?'
+        r'.*?'
+        r'<a[^>]*class="story-link"[^>]*href="([^"]*)"[^>]*>.*?</a>\s*'
+        r'(?:<span[^>]*class="story-source"[^>]*>(.*?)</span>)?',
+        re.DOTALL
+    )
+
+    matches = story_pattern.findall(raw_html)
+    if not matches:
+        # Fallback: strip inline styles and return as-is
+        cleaned = re.sub(r'\s+style="[^"]*"', '', raw_html)
+        cleaned = re.sub(r"\s+style='[^']*'", '', cleaned)
+        return cleaned
+
+    rebuilt = []
+    for title, summary, why, link, source in matches:
+        title   = title.strip()
+        summary = summary.strip()
+        why     = why.strip()
+        link    = link.strip() or "#"
+        source  = source.strip() or "Source"
+
+        why_text = re.sub(r'</?strong>', '', why).replace("Why it matters:", "").strip()
+        why_html = f'<p class="story-why"><strong>Why it matters:</strong> {why_text}</p>' if why_text else ""
+        summary_html = f'<p class="story-summary">{summary}</p>' if summary else ""
+
+        rebuilt.append(f'''<div class="story">
+    <h4 class="story-title">{title}</h4>
+    {summary_html}
+    {why_html}
+    <div class="story-link-row">
+      <a class="story-link" href="{link}">Read article →</a>
+      <span class="story-source">{source}</span>
+    </div>
+  </div>''')
+
+    return "\n  ".join(rebuilt)
+
+
+def _extract_investor_tips(raw_html: str) -> str:
+    """Extracts the 'What To Tell Investors' block content and re-emits it cleanly."""
+    m = re.search(
+        r'<div[^>]*class="investor-tips"[^>]*>.*?<ul[^>]*>(.*?)</ul>.*?</div>',
+        raw_html, re.DOTALL
+    )
+    if not m:
+        return ""
+    items_html = m.group(1)
+    items = re.findall(r'<li[^>]*>(.*?)</li>', items_html, re.DOTALL)
+    items = [i.strip() for i in items if i.strip()]
+    if not items:
+        return ""
+    li_html = "\n      ".join(f"<li>{i}</li>" for i in items)
+    return f'''<div class="investor-tips">
+    <div class="investor-tips-heading">💬 What To Tell Investors</div>
+    <ul>
+      {li_html}
+    </ul>
+  </div>'''
+
+
 def _sanitize_category_html(html: str) -> str:
     """
-    Safety net: strips any inline style="..." attributes Groq might add.
-    These can override the email template's CSS and break the stacked
-    vertical card layout into side-by-side columns/flex/grid — which is
-    exactly the visual bug this guards against for categories like
-    Economy & Policy and General News.
+    GUARANTEED LAYOUT FIX: Rebuilds each category's HTML from scratch using
+    only the actual content Groq generated (titles, summaries, links, tips),
+    discarding any wrapper structure that could cause side-by-side/column
+    rendering. This guarantees every story stacks vertically regardless of
+    what HTML structure Groq actually returned.
     """
-    html = re.sub(r'\s+style="[^"]*"', '', html)
-    html = re.sub(r"\s+style='[^']*'", '', html)
-    return html
+    stories_html = _rebuild_story_html(html)
+    tips_html    = _extract_investor_tips(html)
+
+    if tips_html:
+        return f"{stories_html}\n  {tips_html}"
+    return stories_html
 
 
 def _articles_text(articles: list[dict]) -> str:

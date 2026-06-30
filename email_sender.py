@@ -107,7 +107,7 @@ def _build_nfo_table(nfo_list: list[dict]) -> str:
   <div class="nfo-table-heading" style="font-size:13px;font-weight:700;color:#c2127f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
     📋 Live NFO Tracker &nbsp;<span style="font-size:10px;font-weight:400;color:#888;text-transform:none;letter-spacing:0;">Source: AMFI India</span>
   </div>
-  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+  <table style="width:100%;display:table;border-collapse:collapse;font-size:12px;clear:both;">
     <thead>
       <tr>
         <th style="background:#c2127f;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;letter-spacing:0.5px;">NFO Name</th>
@@ -119,7 +119,7 @@ def _build_nfo_table(nfo_list: list[dict]) -> str:
     <tbody>{rows}
     </tbody>
   </table>
-  <div style="text-align:center;margin-top:12px;">
+  <div style="display:block;width:100%;text-align:center;margin-top:16px;clear:both;">
     <a href="https://www.amfiindia.com/new-fund-offer"
        style="display:inline-block;background:#c2127f;color:#ffffff;font-size:12px;font-weight:700;
               padding:8px 20px;border-radius:20px;text-decoration:none;letter-spacing:0.5px;">
