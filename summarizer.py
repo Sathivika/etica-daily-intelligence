@@ -290,6 +290,7 @@ Generate a concise executive intelligence brief in HTML using EXACTLY this struc
 Rules:
 - "What To Tell Investors" bullets must be ready-to-use phrases a relationship manager can speak to a client, synthesised across ALL categories.
 - FAQs must reflect questions real investors ask based on today's specific headlines — not generic questions.
+- CRITICAL: Only state facts that are explicitly present in the headlines provided above. Do NOT invent, infer, or assume any event (e.g. market holidays, specific index levels, company-specific news) that is not directly mentioned in the headlines. If a headline is vague, summarise it vaguely — do not embellish.
 - Return ONLY the HTML above. Be specific and data-aware. No markdown, no code fences."""
 
     logger.info("Calling Groq (1/N): Executive summary...")
@@ -433,6 +434,7 @@ Rules:
 - story-summary must NOT repeat the headline's key nouns/verbs in the opening phrase — rephrase to add context.
 - "What To Tell Investors" bullets must be conversational, reassuring, and specific to today's news in this category.
 - Generate one <div class="category-stories"> block for EVERY category listed above.
+- CRITICAL ACCURACY: Only write facts that are explicitly stated in the article titles and sources provided. Do NOT invent specific numbers, dates, market closures, holidays, or company names that do not appear in the article list. If you are unsure of a detail, omit it or keep the sentence general.
 - CRITICAL: Every story MUST be its own separate <div class="story">...</div> block, stacked vertically one after another. NEVER wrap multiple stories in a single shared container, NEVER use flexbox, NEVER use CSS Grid, NEVER add a "style" attribute to any element, and NEVER place stories side-by-side in columns. Each story div must be 100% width and appear below the previous one, exactly like the template example above.
 - Do NOT add any class names other than the ones shown in the template above (story, story-title, story-summary, story-why, story-link-row, story-link, story-source, investor-tips, investor-tips-heading).
 - Return ONLY HTML. No markdown. No code fences. No extra text."""

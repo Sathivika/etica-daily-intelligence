@@ -53,12 +53,27 @@ def _deduplicate(articles: list[dict]) -> list[dict]:
     return unique
 
 
+def _is_fresh(published: str, max_age_days: int = 3) -> bool:
+    """Returns True if the article was published within max_age_days. Accepts articles with no date."""
+    if not published:
+        return True  # no date = keep (can't tell, better safe)
+    import email.utils
+    try:
+        parsed = email.utils.parsedate_to_datetime(published)
+        from datetime import timezone
+        age = datetime.now(timezone.utc) - parsed
+        return age.days <= max_age_days
+    except Exception:
+        return True  # unparseable date = keep
+
+
 def fetch_all_news() -> dict[str, list[dict]]:
     """
     Returns a dict:
       { category_name: [{"title":..., "link":..., "published":..., "source":...}, ...] }
     Order of keys matches the desired email layout.
     Mutual Funds gets a bonus dedicated NFO fetch merged in to guarantee NFO articles appear.
+    Stale articles (older than 3 days) are filtered out to prevent Groq hallucinating old events.
     """
     all_news: dict[str, list[dict]] = {}
 
@@ -102,7 +117,15 @@ def fetch_all_news() -> dict[str, list[dict]]:
 
         before = len(articles)
         articles = _deduplicate(articles)
-        logger.info(f"  {before} fetched → {len(articles)} after dedup")
+
+        # ── Filter stale articles ─────────────────────────────────────────
+        fresh = [a for a in articles if _is_fresh(a["published"])]
+        stale_count = len(articles) - len(fresh)
+        if stale_count:
+            logger.info(f"  Dropped {stale_count} stale article(s) (>3 days old)")
+        articles = fresh if fresh else articles  # fallback: keep all if everything is stale
+
+        logger.info(f"  {before} fetched → {len(articles)} after dedup+freshness")
 
         all_news[category] = articles
 
