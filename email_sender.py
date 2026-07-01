@@ -64,19 +64,78 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
     {table_rows}
   </table>
   <div class="snapshot-note">Live prices as of email delivery &nbsp;·&nbsp; Indices/Forex/Crude: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
+</div>
+<div style="padding:18px 24px 20px;background:#fdf5fa;border-bottom:3px solid #f0e4ec;">
+  <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2.5px;color:#c2127f;margin-bottom:12px;text-align:center;">⚡ Quick Navigation</div>
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-indian-stock-market" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">🇮🇳<br/>Indian Stock<br/>Market</a>
+      </td>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-global-markets" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">🌐<br/>Global<br/>Markets</a>
+      </td>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-geopolitics-trade" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">🌍<br/>Geopolitics<br/>&amp; Trade</a>
+      </td>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-mutual-funds" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">💰<br/>Mutual<br/>Funds</a>
+      </td>
+    </tr>
+    <tr>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-nfo-tracker" style="display:block;text-align:center;padding:8px 4px;background:#c2127f;color:#ffffff;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #c2127f;line-height:1.3;">📋<br/>Live NFO<br/>Tracker</a>
+      </td>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-commodities-currency" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">🥇<br/>Commodities<br/>&amp; Currency</a>
+      </td>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-economy-policy" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">🏛️<br/>Economy<br/>&amp; Policy</a>
+      </td>
+      <td width="25%" style="padding:3px 4px;">
+        <a href="#cat-health-insurance" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">🏥<br/>Health &amp;<br/>Insurance</a>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="padding:3px 4px;">
+        <a href="#cat-general-news" style="display:block;text-align:center;padding:8px 4px;background:#ffffff;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">📰 General News</a>
+      </td>
+      <td colspan="2" style="padding:3px 4px;">
+        <a href="#cat-executive-summary" style="display:block;text-align:center;padding:8px 4px;background:#fbe7f3;color:#c2127f;font-size:11px;font-weight:700;border-radius:8px;text-decoration:none;border:1.5px solid #e8b4d8;line-height:1.3;">📌 Executive Summary</a>
+      </td>
+    </tr>
+  </table>
 </div>"""
+
+
+def _category_anchor(category: str) -> str:
+    """Returns the anchor name for a given category — must match the nav button href."""
+    mapping = {
+        "Indian Stock Market":    "cat-indian-stock-market",
+        "Global Markets":         "cat-global-markets",
+        "Geopolitics & Trade":    "cat-geopolitics-trade",
+        "Mutual Funds":           "cat-mutual-funds",
+        "Commodities & Currency": "cat-commodities-currency",
+        "Economy & Policy":       "cat-economy-policy",
+        "Health & Term Insurance":"cat-health-insurance",
+        "General News":           "cat-general-news",
+    }
+    return mapping.get(category, category.lower().replace(" ", "-").replace("&", "and"))
 
 
 def _build_category_sections(categories: dict[str, str], nfo_list: list[dict]) -> str:
     """Wraps each AI-generated category HTML in a styled block.
     For Mutual Funds, injects the Live NFO Tracker table after the stories.
+    Each block has an <a name> anchor so the nav buttons can jump to it.
     """
     sections = []
     for category, html in categories.items():
+        anchor = _category_anchor(category)
         extra = ""
         if category == "Mutual Funds" and nfo_list:
             extra = _build_nfo_table(nfo_list)
         section = f"""
+<a name="{anchor}"></a>
 <div class="category-block">
   <div class="category-label">{category}</div>
   {html}
@@ -104,6 +163,7 @@ def _build_nfo_table(nfo_list: list[dict]) -> str:
 
     return f"""
 <div class="nfo-table-wrap" style="margin-top:20px;">
+  <a name="cat-nfo-tracker"></a>
   <div class="nfo-table-heading" style="font-size:13px;font-weight:700;color:#c2127f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
     📋 Live NFO Tracker &nbsp;<span style="font-size:10px;font-weight:400;color:#888;text-transform:none;letter-spacing:0;">Source: AMFI India</span>
   </div>
@@ -147,6 +207,7 @@ def _build_mint_section(mint_articles: list[dict]) -> str:
   </div>"""
 
     return f"""
+<a name="cat-general-news"></a>
 <div class="category-block">
   <div class="category-label">General News</div>
   {cards}
