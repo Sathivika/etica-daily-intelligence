@@ -65,6 +65,7 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
   </table>
   <div class="snapshot-note">Live prices as of email delivery &nbsp;·&nbsp; Indices/Forex/Crude: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
 </div>
+<a name="cat-quick-nav" style="display:block;font-size:0;line-height:0;">&nbsp;</a>
 <div style="padding:18px 24px 20px;background:#fdf5fa;border-bottom:3px solid #f0e4ec;">
   <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2.5px;color:#c2127f;margin-bottom:12px;text-align:center;">⚡ Quick Navigation</div>
   <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -108,6 +109,11 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
 </div>"""
 
 
+BACK_TO_NAV = """<div style="text-align:right;margin-top:14px;margin-bottom:2px;">
+  <a href="#cat-quick-nav" style="display:inline-block;font-size:10px;font-weight:700;color:#c2127f;text-decoration:none;padding:4px 12px;border:1px solid #e8b4d8;border-radius:20px;background:#fdf5fa;letter-spacing:0.5px;">↑ Back to Navigation</a>
+</div>"""
+
+
 def _category_anchor(category: str) -> str:
     """Returns the anchor name for a given category — must match the nav button href."""
     mapping = {
@@ -126,7 +132,8 @@ def _category_anchor(category: str) -> str:
 def _build_category_sections(categories: dict[str, str], nfo_list: list[dict]) -> str:
     """Wraps each AI-generated category HTML in a styled block.
     For Mutual Funds, injects the Live NFO Tracker table after the stories.
-    Each block has an <a name> anchor so the nav buttons can jump to it.
+    Each block has an <a name> anchor BEFORE the div so Gmail can find it.
+    Each block ends with a Back to Navigation button.
     """
     sections = []
     for category, html in categories.items():
@@ -135,11 +142,12 @@ def _build_category_sections(categories: dict[str, str], nfo_list: list[dict]) -
         if category == "Mutual Funds" and nfo_list:
             extra = _build_nfo_table(nfo_list)
         section = f"""
-<a name="{anchor}"></a>
+<a name="{anchor}" style="display:block;font-size:0;line-height:0;">&nbsp;</a>
 <div class="category-block">
   <div class="category-label">{category}</div>
   {html}
   {extra}
+  {BACK_TO_NAV}
 </div>
 """
         sections.append(section)
@@ -147,7 +155,9 @@ def _build_category_sections(categories: dict[str, str], nfo_list: list[dict]) -
 
 
 def _build_nfo_table(nfo_list: list[dict]) -> str:
-    """Builds the Live NFO Tracker table sourced from AMFI (Name, Fund House, Open Date, Close Date)."""
+    """Builds the Live NFO Tracker table sourced from AMFI.
+    Close date is not available in AMFI RSS — users should click 'View All NFOs on AMFI' for full details.
+    """
     if not nfo_list:
         return ""
 
@@ -158,12 +168,12 @@ def _build_nfo_table(nfo_list: list[dict]) -> str:
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#2b2b2b;font-size:12px;line-height:1.4;">{nfo["name"]}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;">{nfo["fund_house"]}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;white-space:nowrap;">{nfo["open_date"]}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#3a3a3a;font-size:12px;white-space:nowrap;">{nfo["close_date"]}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f0d9ea;color:#888;font-size:11px;font-style:italic;">See AMFI →</td>
       </tr>"""
 
     return f"""
+<a name="cat-nfo-tracker" style="display:block;font-size:0;line-height:0;">&nbsp;</a>
 <div class="nfo-table-wrap" style="margin-top:20px;">
-  <a name="cat-nfo-tracker"></a>
   <div class="nfo-table-heading" style="font-size:13px;font-weight:700;color:#c2127f;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
     📋 Live NFO Tracker &nbsp;<span style="font-size:10px;font-weight:400;color:#888;text-transform:none;letter-spacing:0;">Source: AMFI India</span>
   </div>
@@ -179,7 +189,8 @@ def _build_nfo_table(nfo_list: list[dict]) -> str:
     <tbody>{rows}
     </tbody>
   </table>
-  <div style="display:block;width:100%;text-align:center;margin-top:16px;clear:both;">
+  <div style="font-size:10px;color:#aaaaaa;margin-top:8px;text-align:center;">Close date not available in AMFI RSS feed — click below for full details</div>
+  <div style="display:block;width:100%;text-align:center;margin-top:10px;clear:both;">
     <a href="https://www.amfiindia.com/new-fund-offer"
        style="display:inline-block;background:#c2127f;color:#ffffff;font-size:12px;font-weight:700;
               padding:8px 20px;border-radius:20px;text-decoration:none;letter-spacing:0.5px;">
@@ -207,7 +218,7 @@ def _build_mint_section(mint_articles: list[dict]) -> str:
   </div>"""
 
     return f"""
-<a name="cat-general-news"></a>
+<a name="cat-general-news" style="display:block;font-size:0;line-height:0;">&nbsp;</a>
 <div class="category-block">
   <div class="category-label">General News</div>
   {cards}
@@ -229,6 +240,7 @@ def _build_mint_section(mint_articles: list[dict]) -> str:
     </a>
     <div style="font-size:10px;color:#aaaaaa;margin-top:10px;">Top stories from India's leading publications</div>
   </div>
+  {BACK_TO_NAV}
 </div>"""
 
 
