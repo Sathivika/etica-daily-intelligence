@@ -74,8 +74,10 @@ def fetch_all_news() -> dict[str, list[dict]]:
     Order of keys matches the desired email layout.
     Mutual Funds gets a bonus dedicated NFO fetch merged in to guarantee NFO articles appear.
     Stale articles (older than 3 days) are filtered out to prevent Groq hallucinating old events.
+    Cross-category deduplication: articles already seen in a previous category are skipped.
     """
     all_news: dict[str, list[dict]] = {}
+    seen_titles_global: list[str] = []  # tracks titles across ALL categories
 
     for category, query in CATEGORIES.items():
         logger.info(f"Fetching: {category}")
@@ -115,6 +117,12 @@ def fetch_all_news() -> dict[str, list[dict]]:
                     "source":    entry.get("source", {}).get("title", ""),
                 })
 
+        # ── Cross-category dedup: remove articles already in a previous category ──
+        articles = [
+            a for a in articles
+            if not any(_similar(a["title"], seen) >= SIMILARITY_THRESHOLD for seen in seen_titles_global)
+        ]
+
         before = len(articles)
         articles = _deduplicate(articles)
 
@@ -126,6 +134,9 @@ def fetch_all_news() -> dict[str, list[dict]]:
         articles = fresh if fresh else articles  # fallback: keep all if everything is stale
 
         logger.info(f"  {before} fetched → {len(articles)} after dedup+freshness")
+
+        # Register all kept titles globally to prevent repeats in later categories
+        seen_titles_global.extend(a["title"] for a in articles)
 
         all_news[category] = articles
 
@@ -141,14 +152,30 @@ def _fallback(label: str) -> dict:
 
 
 def _yf_card(label: str, ticker: str, unit: str = "", decimals: int = 2) -> dict:
-    """Fetch a single card from Yahoo Finance via yfinance."""
+    """
+    Fetch a single card from Yahoo Finance via yfinance.
+    Always uses PREVIOUS DAY closing price (previous_close vs the day before that),
+    so the newsletter shows accurate closing data regardless of when it runs.
+    """
     import yfinance as yf
-    info  = yf.Ticker(ticker).fast_info
-    price = info.last_price
-    prev  = info.previous_close
-    chg   = price - prev
-    pct   = (chg / prev) * 100
-    fmt   = f"{{:,.{decimals}f}}"
+    ticker_obj = yf.Ticker(ticker)
+    info = ticker_obj.fast_info
+
+    # previous_close = yesterday closing price (what we want to show)
+    # We compute change vs the day before yesterday using history
+    price = info.previous_close  # yesterday's close
+    try:
+        hist  = ticker_obj.history(period="5d")
+        if len(hist) >= 2:
+            prev = hist["Close"].iloc[-2]  # day before yesterday
+        else:
+            prev = info.previous_close
+    except Exception:
+        prev = info.previous_close
+
+    chg = price - prev
+    pct = (chg / prev) * 100 if prev else 0
+    fmt = f"{{:,.{decimals}f}}"
     return {
         "label":      label,
         "price":      f"{unit}{fmt.format(price)}",
@@ -232,14 +259,16 @@ def fetch_market_snapshot() -> dict:
 
     # ── yfinance cards ────────────────────────────────────────────────────
     YF_CARDS = {
-        "nifty":   ("Nifty 50",         "^NSEI",    "",  2),
-        "sensex":  ("Sensex",           "^BSESN",   "",  2),
-        "usdinr":  ("USD/INR",          "USDINR=X", "₹", 4),
-        "crude":   ("Crude Oil (WTI)",  "CL=F",     "$", 2),
-        "sp500":   ("S&P 500",          "^GSPC",    "",  2),
-        "nasdaq":  ("NASDAQ",           "^IXIC",    "",  2),
-        "nikkei":  ("Nikkei 225",       "^N225",    "¥", 0),
-        "hangseng":("Hang Seng",        "^HSI",     "",  2),
+        "nifty":    ("Nifty 50",          "^NSEI",    "",  2),
+        "sensex":   ("Sensex",            "^BSESN",   "",  2),
+        "nifty500": ("Nifty 500",         "^CRSLDX",  "",  2),
+        "bond10y":  ("10Y Govt Bond",     "^IN10Y",   "",  2),
+        "usdinr":   ("USD/INR",           "USDINR=X", "₹", 4),
+        "crude":    ("Crude Oil (WTI)",   "CL=F",     "$", 2),
+        "sp500":    ("S&P 500",           "^GSPC",    "",  2),
+        "nasdaq":   ("NASDAQ",            "^IXIC",    "",  2),
+        "nikkei":   ("Nikkei 225",        "^N225",    "¥", 0),
+        "hangseng": ("Hang Seng",         "^HSI",     "",  2),
     }
     for key, (label, ticker, unit, decimals) in YF_CARDS.items():
         try:

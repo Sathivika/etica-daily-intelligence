@@ -48,12 +48,30 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
             f'</td>'
         )
 
+    def _td3(data: dict) -> str:
+        """Same as _td but width:33.33% for 3-column rows."""
+        color  = "#16a34a" if data["direction"] == "up" else ("#dc2626" if data["direction"] == "down" else "#888888")
+        arrow  = "▲" if data["direction"] == "up" else ("▼" if data["direction"] == "down" else "—")
+        bg     = "#f0fdf4" if data["direction"] == "up" else ("#fef2f2" if data["direction"] == "down" else "#f9f9f9")
+        border = "#86efac" if data["direction"] == "up" else ("#fca5a5" if data["direction"] == "down" else "#e0e0e0")
+        return (
+            f'<td class="snapshot-card" style="background:{bg};border:1px solid {border};width:33.33%;">'
+            f'<div class="snapshot-label">{data["label"]}</div>'
+            f'<div class="snapshot-price">{data["price"]}</div>'
+            f'<div class="snapshot-change" style="color:{color};">{arrow} {data["change"]} ({data["pct_change"]})</div>'
+            f'</td>'
+        )
+
+    # 3 cards per row, 4 rows:
+    # Row 1: Nifty 50 | Sensex | Nifty 500
+    # Row 2: 10Y Govt Bond | Gold | Silver
+    # Row 3: USD/INR | Crude Oil | S&P 500
+    # Row 4: NASDAQ | Nikkei 225 | Hang Seng
     rows = [
-        _td(snapshot["nifty"])    + _td(snapshot["sensex"]),
-        _td(snapshot["gold"])     + _td(snapshot["silver"]),
-        _td(snapshot["usdinr"])   + _td(snapshot["crude"]),
-        _td(snapshot["sp500"])    + _td(snapshot["nasdaq"]),
-        _td(snapshot["nikkei"])   + _td(snapshot["hangseng"]),
+        _td3(snapshot["nifty"])    + _td3(snapshot["sensex"])   + _td3(snapshot["nifty500"]),
+        _td3(snapshot["bond10y"])  + _td3(snapshot["gold"])     + _td3(snapshot["silver"]),
+        _td3(snapshot["usdinr"])   + _td3(snapshot["crude"])    + _td3(snapshot["sp500"]),
+        _td3(snapshot["nasdaq"])   + _td3(snapshot["nikkei"])   + _td3(snapshot["hangseng"]),
     ]
     table_rows = "\n    ".join(f"<tr>{r}</tr>" for r in rows)
 
@@ -63,7 +81,7 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
   <table class="snapshot-grid">
     {table_rows}
   </table>
-  <div class="snapshot-note">Live prices as of email delivery &nbsp;·&nbsp; Indices/Forex/Crude: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
+  <div class="snapshot-note">Previous day's closing prices &nbsp;·&nbsp; Indices/Forex/Crude/Bond: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
 </div>
 <a name="cat-quick-nav" style="display:block;font-size:0;line-height:0;">&nbsp;</a>
 <div style="padding:18px 24px 20px;background:#fdf5fa;border-bottom:3px solid #f0e4ec;">
