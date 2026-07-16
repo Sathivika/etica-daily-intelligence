@@ -262,7 +262,24 @@ def _build_mint_section(mint_articles: list[dict]) -> str:
 </div>"""
 
 
-def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict], nfo_list: list[dict]) -> str:
+
+def _build_wotd_card(wotd: dict) -> str:
+    """Builds the Word of the Day card — placed below Executive Summary."""
+    if not wotd or not wotd.get("word"):
+        return ""
+    source_note = f'Source: {wotd["source"]}' if wotd.get("source") else ""
+    return f"""
+<div style="background:#f0f7ff;border-left:4px solid #2d7dd2;border-radius:0 8px 8px 0;
+            padding:20px 32px;margin:0;border-bottom:1px solid #d0e8f5;">
+  <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
+              color:#2d7dd2;margin-bottom:10px;">📘 Word of the Day</div>
+  <div style="font-size:18px;font-weight:800;color:#1a5fa8;margin-bottom:8px;">{wotd["word"]}</div>
+  <div style="font-size:13px;color:#2b2b2b;line-height:1.7;">{wotd["definition"]}</div>
+  <div style="font-size:10px;color:#aaaaaa;margin-top:10px;">{source_note}</div>
+</div>"""
+
+
+def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict], nfo_list: list[dict], wotd: dict | None = None) -> str:
     template = _load_template()
 
     now      = datetime.now()
@@ -279,7 +296,7 @@ def build_email_html(summarized: dict, snapshot: dict, mint_articles: list[dict]
         .replace("{{YEAR}}",              year_str)
         .replace("{{LOGO_URL}}",          "https://raw.githubusercontent.com/Sathivika/etica-daily-intelligence/main/templates/assets/etica_logo.png")
         .replace("{{MARKET_SNAPSHOT}}",   market_snapshot_html)
-        .replace("{{EXECUTIVE_SUMMARY}}", summarized["executive_summary"])
+        .replace("{{EXECUTIVE_SUMMARY}}", summarized["executive_summary"] + _build_wotd_card(wotd or {}))
         .replace("{{CATEGORY_SECTIONS}}", category_sections + mint_section)
     )
     return html
