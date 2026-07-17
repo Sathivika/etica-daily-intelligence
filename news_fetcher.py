@@ -246,11 +246,140 @@ def _ibja_cards() -> tuple[dict, dict]:
         return _fallback("Gold 999 (₹/10g)"), _fallback("Silver 999 (₹/kg)")
 
 
+def _investing_bond10y() -> dict | None:
+    """
+    Scrapes India's 10Y Govt Bond closing yield from investing.com's historical
+    data table (most recent trading day's close vs. the prior trading day's close).
+    Returns None if the table can't be parsed (site structure changed, blocked, etc.).
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    url = "https://in.investing.com/rates-bonds/india-10-year-bond-yield-historical-data"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "en-IN,en;q=0.9",
+    }
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    def parse_num(v: str):
+        v = v.replace(",", "").replace("%", "").strip()
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
+    # Historical-data table rows are date-ordered, most recent first.
+    # Column layout: Date | Price(close) | Open | High | Low | Change %
+    closes = []
+    for tr in soup.find_all("tr"):
+        tds = [td.get_text(strip=True) for td in tr.find_all("td")]
+        if len(tds) < 2:
+            continue
+        price = parse_num(tds[1])
+        if price is not None and 0 < price < 25:  # sane bond-yield range
+            closes.append(price)
+
+    if len(closes) < 2:
+        return None
+
+    latest, prev = closes[0], closes[1]
+    chg = latest - prev
+    pct = (chg / prev) * 100 if prev else 0
+    return {
+        "label":      "10Y Govt Bond",
+        "price":      f"{latest:.3f}%",
+        "change":     f"{'+' if chg >= 0 else ''}{chg:.3f}",
+        "pct_change": f"{pct:+.2f}%",
+        "direction":  "up" if chg >= 0 else "down",
+    }
+
+
+def _tradingeconomics_bond10y() -> dict | None:
+    """
+    Fallback scraper: reads the Actual/Previous summary stats table on
+    tradingeconomics.com's India 10Y bond yield page.
+    Returns None if the table can't be found/parsed.
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    url = "https://tradingeconomics.com/india/government-bond-yield"
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; EticaBot/1.0)"}
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        header_idx, headers_lower = None, []
+        for i, row in enumerate(rows):
+            cells = [c.get_text(strip=True).lower() for c in row.find_all(["th", "td"])]
+            if "actual" in cells and "previous" in cells:
+                header_idx, headers_lower = i, cells
+                break
+        if header_idx is None:
+            continue
+
+        idx_actual = headers_lower.index("actual")
+        idx_prev   = headers_lower.index("previous")
+        for row in rows[header_idx + 1:]:
+            cells = [c.get_text(strip=True) for c in row.find_all(["th", "td"])]
+            if len(cells) <= max(idx_actual, idx_prev):
+                continue
+            try:
+                actual = float(cells[idx_actual])
+                prev   = float(cells[idx_prev])
+            except ValueError:
+                continue
+            chg = actual - prev
+            pct = (chg / prev) * 100 if prev else 0
+            return {
+                "label":      "10Y Govt Bond",
+                "price":      f"{actual:.2f}%",
+                "change":     f"{'+' if chg >= 0 else ''}{chg:.2f}",
+                "pct_change": f"{pct:+.2f}%",
+                "direction":  "up" if chg >= 0 else "down",
+            }
+    return None
+
+
+def _bond10y_card() -> dict:
+    """
+    Fetches India's 10Y Govt Bond closing yield.
+    Primary:  investing.com historical-data table (previous trading day's close).
+    Fallback: tradingeconomics.com Actual/Previous summary table.
+    Falls back to dashes only if both sources fail.
+    """
+    try:
+        card = _investing_bond10y()
+        if card:
+            logger.info(f"10Y Govt Bond from investing.com: {card['price']}")
+            return card
+    except Exception as e:
+        logger.warning(f"investing.com bond yield scrape failed: {e}")
+
+    try:
+        card = _tradingeconomics_bond10y()
+        if card:
+            logger.info(f"10Y Govt Bond from tradingeconomics.com: {card['price']}")
+            return card
+    except Exception as e:
+        logger.warning(f"tradingeconomics.com bond yield scrape failed: {e}")
+
+    logger.warning("10Y Govt Bond: both sources failed, falling back to dashes")
+    return _fallback("10Y Govt Bond")
+
+
 def fetch_market_snapshot() -> dict:
     """
     Fetches all 10 market snapshot cards:
       - Nifty 50, Sensex, USD/INR, Crude Oil, S&P 500, NASDAQ, Nikkei 225, Hang Seng → yfinance
       - Gold 999, Silver 999 → ibjarates.com (IBJA, official Indian benchmark)
+      - 10Y Govt Bond → investing.com (fallback: tradingeconomics.com)
     Falls back to dashes on any individual failure.
     """
     import yfinance as yf  # noqa: F401
@@ -262,7 +391,6 @@ def fetch_market_snapshot() -> dict:
         "nifty":    ("Nifty 50",          "^NSEI",    "",  2),
         "sensex":   ("Sensex",            "^BSESN",   "",  2),
         "nifty500": ("Nifty 500",         "^CRSLDX",  "",  2),
-        "bond10y":  ("10Y Govt Bond",     "^IN10Y",   "",  2),
         "usdinr":   ("USD/INR",           "USDINR=X", "₹", 4),
         "crude":    ("Crude Oil (WTI)",   "CL=F",     "$", 2),
         "sp500":    ("S&P 500",           "^GSPC",    "",  2),
@@ -276,6 +404,9 @@ def fetch_market_snapshot() -> dict:
         except Exception as e:
             logger.warning(f"yfinance failed for {label}: {e}")
             snapshot[key] = _fallback(label)
+
+    # ── 10Y Govt Bond (scraped — yfinance's ^IN10Y is unreliable) ──────────
+    snapshot["bond10y"] = _bond10y_card()
 
     # ── IBJA cards ────────────────────────────────────────────────────────
     snapshot["gold"], snapshot["silver"] = _ibja_cards()

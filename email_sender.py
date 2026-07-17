@@ -273,8 +273,8 @@ def _build_wotd_card(wotd: dict) -> str:
             padding:20px 32px;margin:0;border-bottom:1px solid #d0e8f5;">
   <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
               color:#2d7dd2;margin-bottom:10px;">📘 Word of the Day</div>
-  <div style="font-size:18px;font-weight:800;color:#1a5fa8;margin-bottom:8px;">{wotd["word"]}</div>
-  <div style="font-size:13px;color:#2b2b2b;line-height:1.7;">{wotd["definition"]}</div>
+  <div style="font-size:21px;font-weight:800;color:#1a5fa8;margin-bottom:8px;">{wotd["word"]}</div>
+  <div style="font-size:15px;color:#2b2b2b;line-height:1.7;">{wotd["definition"]}</div>
   <div style="font-size:10px;color:#aaaaaa;margin-top:10px;">{source_note}</div>
 </div>"""
 
