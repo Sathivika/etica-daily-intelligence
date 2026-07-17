@@ -307,7 +307,7 @@ def _tradingeconomics_bond10y() -> dict | None:
     import requests
     from bs4 import BeautifulSoup
 
-    url = "https://tradingeconomics.com/india/government-bond-yield"
+    url = "https://in.investing.com/rates-bonds/india-10-year-bond-yield-historical-data"
     headers = {"User-Agent": "Mozilla/5.0 (compatible; EticaBot/1.0)"}
     resp = requests.get(url, headers=headers, timeout=10)
     resp.raise_for_status()
