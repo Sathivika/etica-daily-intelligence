@@ -11,16 +11,58 @@ from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
-# ── Categories & their RSS search queries (ordered for email layout) ─────────
-CATEGORIES = {
-    "Indian Stock Market":      "Indian stock market Nifty Sensex BSE NSE index sectors",
-    "Global Markets":           "global markets S&P500 Dow Jones NASDAQ US Fed India impact",
-    "Geopolitics & Trade":      "geopolitics trade war tariffs India US China sanctions",
-    "Mutual Funds":             "mutual funds SIP India AMC SEBI",
-    "Commodities & Currency":   "crude oil gold silver commodity prices India rupee dollar forex",
-    "Economy & Policy":         "RBI monetary policy India economy GDP inflation budget fiscal",
-    "Health & Term Insurance":  "health insurance term insurance IRDAI India life cover premium claim",
+# ── Categories: multiple RSS queries per category for source diversity ────────
+# Each category has a LIST of queries — each fetches from Google News RSS.
+# Google News aggregates from all major publishers listed in our source plan.
+# Multiple queries = more diverse articles, fewer repeats across days.
+
+CATEGORY_QUERIES = {
+    "Indian Stock Market": [
+        "Indian stock market Nifty Sensex BSE NSE today site:moneycontrol.com OR site:economictimes.com OR site:business-standard.com",
+        "Nifty Sensex index BSE NSE sectors rally fall site:livemint.com OR site:thehindubusinessline.com OR site:financialexpress.com",
+        "India stock market analysis earnings results FII DII site:moneycontrol.com OR site:economictimes.com",
+        "BSE NSE announcements SEBI India equities site:business-standard.com OR site:livemint.com",
+    ],
+    "Global Markets": [
+        "global markets S&P500 Dow Jones NASDAQ Wall Street site:reuters.com OR site:bloomberg.com OR site:cnbc.com",
+        "US Fed Federal Reserve interest rate Powell FOMC site:reuters.com OR site:ft.com OR site:marketwatch.com",
+        "global stocks bonds Asia Europe markets site:bloomberg.com OR site:ft.com OR site:investing.com",
+        "Wall Street US economy jobs inflation markets site:cnbc.com OR site:marketwatch.com OR site:wsj.com",
+    ],
+    "Geopolitics & Trade": [
+        "India geopolitics trade tariffs China US sanctions site:reuters.com OR site:bbc.com OR site:apnews.com",
+        "trade war tariffs WTO IMF India exports imports site:ft.com OR site:reuters.com OR site:aljazeera.com",
+        "India foreign policy diplomacy geopolitics site:thehindu.com OR site:reuters.com OR site:bbc.com",
+        "global trade policy World Bank IMF sanctions site:apnews.com OR site:reuters.com OR site:ft.com",
+    ],
+    "Mutual Funds": [
+        "mutual funds SIP India AMC SEBI NAV site:moneycontrol.com OR site:economictimes.com OR site:livemint.com",
+        "NFO new fund offer India AMFI site:valueresearchonline.com OR site:morningstar.in OR site:economictimes.com",
+        "mutual fund performance returns India equity debt site:livemint.com OR site:business-standard.com",
+        "SIP investment India mutual fund AUM site:moneycontrol.com OR site:thehindubusinessline.com",
+    ],
+    "Commodities & Currency": [
+        "crude oil gold silver commodity prices India site:reuters.com OR site:bloomberg.com OR site:livemint.com",
+        "rupee dollar forex India currency RBI site:moneycontrol.com OR site:economictimes.com OR site:business-standard.com",
+        "gold silver MCX India commodity site:kitco.com OR site:moneycontrol.com OR site:economictimes.com",
+        "crude oil OPEC energy commodity global site:reuters.com OR site:bloomberg.com OR site:investing.com",
+    ],
+    "Economy & Policy": [
+        "RBI monetary policy India economy GDP inflation site:rbi.org.in OR site:business-standard.com OR site:economictimes.com",
+        "India budget fiscal deficit PIB finance ministry site:pib.gov.in OR site:livemint.com OR site:thehindubusinessline.com",
+        "India GDP inflation RBI policy rates site:economictimes.com OR site:business-standard.com OR site:moneycontrol.com",
+        "IMF World Bank Federal Reserve ECB global economy site:reuters.com OR site:ft.com OR site:bloomberg.com",
+    ],
+    "Health & Term Insurance": [
+        "health insurance IRDAI India term life cover premium site:economictimes.com OR site:moneycontrol.com OR site:livemint.com",
+        "health insurance India PMJAY NHA ayushman site:pib.gov.in OR site:business-standard.com OR site:thehindubusinessline.com",
+        "term insurance life cover India claim settlement site:economictimes.com OR site:moneycontrol.com",
+        "WHO health India healthcare pharma medical site:reuters.com OR site:thehindu.com OR site:ndtv.com",
+    ],
 }
+
+# Keep CATEGORIES for backward compat (used as ordered key list)
+CATEGORIES = {k: v[0] for k, v in CATEGORY_QUERIES.items()}
 
 # Dedicated NFO query — merged into Mutual Funds to guarantee NFO articles appear
 NFO_QUERY = "NFO new fund offer mutual fund India open close date 2025 2026"
@@ -28,8 +70,8 @@ NFO_QUERY = "NFO new fund offer mutual fund India open close date 2025 2026"
 # Dedicated Fed query — merged into Global Markets to guarantee Fed/FOMC articles appear
 FED_QUERY = "Federal Reserve FOMC interest rate decision US jobs report monetary policy Powell"
 
-ARTICLES_PER_CATEGORY = 20
-SIMILARITY_THRESHOLD   = 0.70   # titles more similar than this → duplicate
+ARTICLES_PER_CATEGORY = 25  # fetch more per query since we dedup aggressively
+SIMILARITY_THRESHOLD   = 0.60   # titles more similar than this → duplicate
 
 
 def _rss_url(query: str) -> str:
@@ -43,13 +85,21 @@ def _similar(a: str, b: str) -> float:
 
 def _deduplicate(articles: list[dict]) -> list[dict]:
     unique = []
+    seen_links = set()
     for article in articles:
+        # URL-based exact dedup first (fastest)
+        link = article.get("link", "")
+        if link and link in seen_links:
+            continue
+        # Title similarity dedup
         is_dup = any(
             _similar(article["title"], seen["title"]) >= SIMILARITY_THRESHOLD
             for seen in unique
         )
         if not is_dup:
             unique.append(article)
+            if link:
+                seen_links.add(link)
     return unique
 
 
@@ -79,19 +129,25 @@ def fetch_all_news() -> dict[str, list[dict]]:
     all_news: dict[str, list[dict]] = {}
     seen_titles_global: list[str] = []  # tracks titles across ALL categories
 
-    for category, query in CATEGORIES.items():
-        logger.info(f"Fetching: {category}")
-        url  = _rss_url(query)
-        feed = feedparser.parse(url)
-
+    for category, queries in CATEGORY_QUERIES.items():
+        logger.info(f"Fetching: {category} ({len(queries)} queries)")
         articles = []
-        for entry in feed.entries[:ARTICLES_PER_CATEGORY]:
-            articles.append({
-                "title":     entry.get("title", "No Title"),
-                "link":      entry.get("link",  "#"),
-                "published": entry.get("published", ""),
-                "source":    entry.get("source", {}).get("title", ""),
-            })
+        seen_links_cat = set()
+
+        for query in queries:
+            url  = _rss_url(query)
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:ARTICLES_PER_CATEGORY]:
+                link = entry.get("link", "#")
+                if link in seen_links_cat:
+                    continue
+                seen_links_cat.add(link)
+                articles.append({
+                    "title":     entry.get("title", "No Title"),
+                    "link":      link,
+                    "published": entry.get("published", ""),
+                    "source":    entry.get("source", {}).get("title", ""),
+                })
 
         # ── Bonus NFO fetch for Mutual Funds ─────────────────────────────
         if category == "Mutual Funds":
@@ -246,132 +302,102 @@ def _ibja_cards() -> tuple[dict, dict]:
         return _fallback("Gold 999 (₹/10g)"), _fallback("Silver 999 (₹/kg)")
 
 
-def _investing_bond10y() -> dict | None:
+
+def _fetch_india_10y_bond() -> dict:
     """
-    Scrapes India's 10Y Govt Bond closing yield from investing.com's historical
-    data table (most recent trading day's close vs. the prior trading day's close).
-    Returns None if the table can't be parsed (site structure changed, blocked, etc.).
+    Fetches India 10-Year Government Bond Yield (previous day closing).
+    Tries Trading Economics first, then Investing.com as fallback.
+    Returns a snapshot card dict.
     """
     import requests
     from bs4 import BeautifulSoup
 
-    url = "https://in.investing.com/rates-bonds/india-10-year-bond-yield-historical-data"
+    label = "10Y Govt Bond"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        "Accept-Language": "en-IN,en;q=0.9",
-    }
-    resp = requests.get(url, headers=headers, timeout=10)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    def parse_num(v: str):
-        v = v.replace(",", "").replace("%", "").strip()
-        try:
-            return float(v)
-        except ValueError:
-            return None
-
-    # Historical-data table rows are date-ordered, most recent first.
-    # Column layout: Date | Price(close) | Open | High | Low | Change %
-    closes = []
-    for tr in soup.find_all("tr"):
-        tds = [td.get_text(strip=True) for td in tr.find_all("td")]
-        if len(tds) < 2:
-            continue
-        price = parse_num(tds[1])
-        if price is not None and 0 < price < 25:  # sane bond-yield range
-            closes.append(price)
-
-    if len(closes) < 2:
-        return None
-
-    latest, prev = closes[0], closes[1]
-    chg = latest - prev
-    pct = (chg / prev) * 100 if prev else 0
-    return {
-        "label":      "10Y Govt Bond",
-        "price":      f"{latest:.3f}%",
-        "change":     f"{'+' if chg >= 0 else ''}{chg:.3f}",
-        "pct_change": f"{pct:+.2f}%",
-        "direction":  "up" if chg >= 0 else "down",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
     }
 
+    # ── Attempt 1: Trading Economics ─────────────────────────────────────────
+    try:
+        resp = requests.get(
+            "https://tradingeconomics.com/india/government-bond-yield",
+            headers=headers, timeout=12
+        )
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-def _tradingeconomics_bond10y() -> dict | None:
-    """
-    Fallback scraper: reads the Actual/Previous summary stats table on
-    tradingeconomics.com's India 10Y bond yield page.
-    Returns None if the table can't be found/parsed.
-    """
-    import requests
-    from bs4 import BeautifulSoup
+        # TE renders a table with id="p" or class="table"; find the yield value
+        # The page shows: "India Government Bond 10Y" with current/previous/change
+        price = prev = None
 
-    url = "https://in.investing.com/rates-bonds/india-10-year-bond-yield-historical-data"
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; EticaBot/1.0)"}
-    resp = requests.get(url, headers=headers, timeout=10)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    for table in soup.find_all("table"):
-        rows = table.find_all("tr")
-        header_idx, headers_lower = None, []
-        for i, row in enumerate(rows):
-            cells = [c.get_text(strip=True).lower() for c in row.find_all(["th", "td"])]
-            if "actual" in cells and "previous" in cells:
-                header_idx, headers_lower = i, cells
-                break
-        if header_idx is None:
-            continue
-
-        idx_actual = headers_lower.index("actual")
-        idx_prev   = headers_lower.index("previous")
-        for row in rows[header_idx + 1:]:
-            cells = [c.get_text(strip=True) for c in row.find_all(["th", "td"])]
-            if len(cells) <= max(idx_actual, idx_prev):
-                continue
+        # Try finding the data in a <td> near "10Y" text
+        for td in soup.find_all("td"):
+            txt = td.get_text(strip=True)
             try:
-                actual = float(cells[idx_actual])
-                prev   = float(cells[idx_prev])
+                val = float(txt.replace(",", ""))
+                if 4.0 <= val <= 12.0:  # reasonable 10Y bond yield range
+                    if price is None:
+                        price = val
+                    elif prev is None:
+                        prev = val
+                        break
             except ValueError:
                 continue
-            chg = actual - prev
-            pct = (chg / prev) * 100 if prev else 0
+
+        if price and prev:
+            chg = price - prev
+            pct = (chg / prev) * 100
+            logger.info(f"India 10Y Bond from Trading Economics: {price}")
+            from datetime import date, timedelta
+            prev_date = (date.today() - timedelta(days=1)).strftime("%-d %b")
             return {
-                "label":      "10Y Govt Bond",
-                "price":      f"{actual:.2f}%",
-                "change":     f"{'+' if chg >= 0 else ''}{chg:.2f}",
+                "label":      f"{label} ({prev_date})",
+                "price":      f"{price:.3f}%",
+                "change":     f"{'+' if chg >= 0 else ''}{chg:.3f}",
                 "pct_change": f"{pct:+.2f}%",
                 "direction":  "up" if chg >= 0 else "down",
             }
-    return None
-
-
-def _bond10y_card() -> dict:
-    """
-    Fetches India's 10Y Govt Bond closing yield.
-    Primary:  investing.com historical-data table (previous trading day's close).
-    Fallback: tradingeconomics.com Actual/Previous summary table.
-    Falls back to dashes only if both sources fail.
-    """
-    try:
-        card = _investing_bond10y()
-        if card:
-            logger.info(f"10Y Govt Bond from investing.com: {card['price']}")
-            return card
     except Exception as e:
-        logger.warning(f"investing.com bond yield scrape failed: {e}")
+        logger.warning(f"Trading Economics bond fetch failed: {e}")
 
+    # ── Attempt 2: Investing.com historical data page ─────────────────────────
     try:
-        card = _tradingeconomics_bond10y()
-        if card:
-            logger.info(f"10Y Govt Bond from tradingeconomics.com: {card['price']}")
-            return card
-    except Exception as e:
-        logger.warning(f"tradingeconomics.com bond yield scrape failed: {e}")
+        resp = requests.get(
+            "https://in.investing.com/rates-bonds/india-10-year-bond-yield-historical-data",
+            headers={**headers, "Referer": "https://in.investing.com/"},
+            timeout=12
+        )
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-    logger.warning("10Y Govt Bond: both sources failed, falling back to dashes")
-    return _fallback("10Y Govt Bond")
+        # Historical data table — first data row has most recent closing price
+        rows = soup.select("table tbody tr")
+        if len(rows) >= 2:
+            def parse_val(row, col_idx):
+                tds = row.find_all("td")
+                if len(tds) > col_idx:
+                    return float(tds[col_idx].get_text(strip=True).replace(",", ""))
+                return None
+
+            price = parse_val(rows[0], 1)  # Most recent close
+            prev  = parse_val(rows[1], 1)  # Previous day close
+
+            if price and prev:
+                chg = price - prev
+                pct = (chg / prev) * 100
+                logger.info(f"India 10Y Bond from Investing.com: {price}")
+                return {
+                    "label":      label,
+                    "price":      f"{price:.3f}%",
+                    "change":     f"{'+' if chg >= 0 else ''}{chg:.3f}",
+                    "pct_change": f"{pct:+.2f}%",
+                    "direction":  "up" if chg >= 0 else "down",
+                }
+    except Exception as e:
+        logger.warning(f"Investing.com bond fetch failed: {e}")
+
+    logger.warning("India 10Y Bond: all sources failed, using fallback")
+    return _fallback(label)
 
 
 def fetch_market_snapshot() -> dict:
@@ -379,7 +405,6 @@ def fetch_market_snapshot() -> dict:
     Fetches all 10 market snapshot cards:
       - Nifty 50, Sensex, USD/INR, Crude Oil, S&P 500, NASDAQ, Nikkei 225, Hang Seng → yfinance
       - Gold 999, Silver 999 → ibjarates.com (IBJA, official Indian benchmark)
-      - 10Y Govt Bond → investing.com (fallback: tradingeconomics.com)
     Falls back to dashes on any individual failure.
     """
     import yfinance as yf  # noqa: F401
@@ -405,8 +430,8 @@ def fetch_market_snapshot() -> dict:
             logger.warning(f"yfinance failed for {label}: {e}")
             snapshot[key] = _fallback(label)
 
-    # ── 10Y Govt Bond (scraped — yfinance's ^IN10Y is unreliable) ──────────
-    snapshot["bond10y"] = _bond10y_card()
+    # ── India 10Y Govt Bond ──────────────────────────────────────────────────
+    snapshot["bond10y"] = _fetch_india_10y_bond()
 
     # ── IBJA cards ────────────────────────────────────────────────────────
     snapshot["gold"], snapshot["silver"] = _ibja_cards()

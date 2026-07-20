@@ -81,7 +81,7 @@ def _build_market_snapshot_html(snapshot: dict) -> str:
   <table class="snapshot-grid">
     {table_rows}
   </table>
-  <div class="snapshot-note">Previous day's closing prices &nbsp;·&nbsp; Indices/Forex/Crude/Bond: Yahoo Finance &nbsp;·&nbsp; Gold/Silver: IBJA</div>
+  <div class="snapshot-note">Previous day's closing prices &nbsp;·&nbsp; Indices/Forex/Crude: Yahoo Finance &nbsp;·&nbsp; 10Y Bond: Trading Economics/Investing.com &nbsp;·&nbsp; Gold/Silver: IBJA</div>
 </div>
 <a name="cat-quick-nav" style="display:block;font-size:0;line-height:0;">&nbsp;</a>
 <div style="padding:18px 24px 20px;background:#fdf5fa;border-bottom:3px solid #f0e4ec;">
@@ -271,10 +271,10 @@ def _build_wotd_card(wotd: dict) -> str:
     return f"""
 <div style="background:#f0f7ff;border-left:4px solid #2d7dd2;border-radius:0 8px 8px 0;
             padding:20px 32px;margin:0;border-bottom:1px solid #d0e8f5;">
-  <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
+  <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
               color:#2d7dd2;margin-bottom:10px;">📘 Word of the Day</div>
-  <div style="font-size:21px;font-weight:800;color:#1a5fa8;margin-bottom:8px;">{wotd["word"]}</div>
-  <div style="font-size:15px;color:#2b2b2b;line-height:1.7;">{wotd["definition"]}</div>
+  <div style="font-size:22px;font-weight:800;color:#1a5fa8;margin-bottom:10px;">{wotd["word"]}</div>
+  <div style="font-size:14px;color:#2b2b2b;line-height:1.8;">{wotd["definition"]}</div>
   <div style="font-size:10px;color:#aaaaaa;margin-top:10px;">{source_note}</div>
 </div>"""
 
